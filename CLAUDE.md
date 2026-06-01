@@ -14,7 +14,8 @@
 3. 遇到需要安装东西、或者有多个方案要取舍时，先问我，别自己替我决定。
 
 ## 怎么运行这个项目
-- **线上版（手机也能用）**：https://yjn101454-ux.github.io/jizhang/ 　← 每次 push 后自动更新。
+- **线上版 A（GitHub Pages）**：https://yjn101454-ux.github.io/jizhang/ 　← 每次 push 自动更新。
+- **线上版 B（Vercel）**：https://jizhang-livid.vercel.app 　← 已连 GitHub，每次 push 自动更新。
 - **网页版（本地日常用）**：双击项目文件夹里的 `index.html`，浏览器就打开了，不用装任何东西。
 - **跑测试**：在项目文件夹打开终端，运行 `node --test`。全绿就说明逻辑没被改坏。
 - **终端版（已封存，不再使用）**：在项目文件夹打开终端，运行 `python jizhang.py`。
