@@ -1,0 +1,6 @@
+# 个人账本数据，不进版本库
+data.json
+
+# Python 运行时自动生成的缓存目录
+__pycache__/
+*.pyc
