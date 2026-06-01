@@ -1,0 +1,18 @@
+# 这是 GitHub Actions 的「自动跑测试」说明书（CI）。
+# 作用：每次你把代码推到 GitHub，它都会自动在云端跑一遍 node --test。
+# 绿勾 = 逻辑没被改坏；红叉 = 哪里坏了，会发邮件提醒你。
+name: 测试
+
+on:
+  push:           # 每次推代码都跑
+  pull_request:   # 别人提合并请求时也跑
+
+jobs:
+  test:
+    runs-on: ubuntu-latest        # 在 GitHub 提供的免费 Linux 机器上跑
+    steps:
+      - uses: actions/checkout@v4 # 第一步：把你的代码拉下来
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'   # 装一个长期支持版的 Node
+      - run: node --test          # 跑测试（就是你本地敲的那条命令）
