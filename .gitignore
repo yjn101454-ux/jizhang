@@ -7,3 +7,5 @@ __pycache__/
 
 # 本地预览/调试配置，与记账功能无关
 .claude/
+
+.vercel
