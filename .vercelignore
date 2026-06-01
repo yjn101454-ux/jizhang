@@ -1,0 +1,4 @@
+# 部署到 Vercel 时不要上传这些
+data.json        # 终端版的私人账本数据，不该传到公网
+__pycache__/
+.claude/
