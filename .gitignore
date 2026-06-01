@@ -4,3 +4,6 @@ data.json
 # Python 运行时自动生成的缓存目录
 __pycache__/
 *.pyc
+
+# 本地预览/调试配置，与记账功能无关
+.claude/
