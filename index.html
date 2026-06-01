@@ -19,6 +19,9 @@
       --muted: #888;
       --border: #e3e5ea;
       --danger: #e0533d;
+      --ok: #2ec27e;       /* 预算充足：绿色 */
+      --warn: #e8a33d;     /* 接近预算：橙黄 */
+      --over: #e0533d;     /* 已超支：红色 */
     }
 
     * { box-sizing: border-box; }
@@ -49,6 +52,28 @@
     .total small { font-size: 14px; color: var(--muted); font-weight: normal; }
     .by-cat { margin-top: 10px; font-size: 14px; color: var(--muted); }
     .by-cat span { display: inline-block; margin-right: 14px; }
+
+    /* 本月预算区 */
+    .budget-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .budget-title { font-weight: bold; }
+    .budget-set { display: flex; gap: 6px; }
+    .budget-set input { width: 110px; padding: 6px 8px; font-size: 14px; border: 1px solid var(--border); border-radius: 8px; }
+    .budget-set button { background: var(--primary); color: #fff; padding: 6px 12px; font-size: 14px; }
+    .budget-empty { color: var(--muted); font-size: 14px; margin-top: 10px; }
+    .budget-nums { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-top: 12px; font-size: 15px; }
+    .budget-remain.ok   { color: var(--ok); }
+    .budget-remain.warn { color: var(--warn); }
+    .budget-remain.over { color: var(--over); }
+    /* 进度条 */
+    .bar { height: 12px; background: #eef0f4; border-radius: 6px; overflow: hidden; margin: 10px 0 6px; }
+    .bar-fill { height: 100%; width: 0; transition: width .3s ease; border-radius: 6px; }
+    .bar-fill.ok   { background: var(--ok); }
+    .bar-fill.warn { background: var(--warn); }
+    .bar-fill.over { background: var(--over); }
+    .budget-msg { font-size: 13px; }
+    .budget-msg.ok   { color: var(--muted); }
+    .budget-msg.warn { color: var(--warn); font-weight: bold; }
+    .budget-msg.over { color: var(--over); font-weight: bold; }
 
     /* 输入区 */
     .field { margin-bottom: 10px; }
@@ -112,6 +137,18 @@
 <body>
   <div class="wrap">
     <h1>💰 记账小工具</h1>
+
+    <!-- 本月预算 -->
+    <div class="card">
+      <div class="budget-head">
+        <span class="budget-title">📅 本月预算</span>
+        <div class="budget-set">
+          <input type="number" id="budgetInput" placeholder="设定金额" step="1" min="0">
+          <button id="saveBudgetBtn">保存</button>
+        </div>
+      </div>
+      <div id="budgetBody"></div>
+    </div>
 
     <!-- 总额区 -->
     <div class="card">
@@ -194,6 +231,88 @@
              `${p(d.getHours())}:${p(d.getMinutes())}`;
     }
 
+    // ===== 本月预算相关 =====
+    const BUDGET_KEY = "jizhang_budget";
+
+    // 读/存预算金额（没设过返回 null）
+    function loadBudget() {
+      const raw = localStorage.getItem(BUDGET_KEY);
+      return raw === null ? null : parseFloat(raw);
+    }
+    function saveBudget(value) {
+      localStorage.setItem(BUDGET_KEY, String(value));
+    }
+
+    // 当前年月，例如 "2026-06"
+    function currentMonth() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    }
+
+    // 本月已花：只把记录时间是「当前这个月」的金额加起来
+    function monthSpent() {
+      const m = currentMonth();
+      return records
+        .filter((r) => typeof r.time === "string" && r.time.startsWith(m))
+        .reduce((sum, r) => sum + r.amount, 0);
+    }
+
+    // 点「保存」设定预算
+    function setBudget() {
+      const input = document.getElementById("budgetInput");
+      const value = parseFloat(input.value);
+      if (isNaN(value) || value <= 0) {
+        alert("请填一个大于 0 的预算金额。");
+        return;
+      }
+      saveBudget(value);
+      renderBudget();
+    }
+
+    // 重画本月预算区：已花 / 剩余 / 百分比 / 进度条 / 三档颜色提醒
+    function renderBudget() {
+      const body = document.getElementById("budgetBody");
+      const input = document.getElementById("budgetInput");
+      const budget = loadBudget();
+
+      // 还没设预算
+      if (budget === null || isNaN(budget)) {
+        body.innerHTML =
+          '<div class="budget-empty">还没设本月预算，上面填个金额点「保存」，就能开始管控啦 👆</div>';
+        return;
+      }
+
+      // 把已设的预算回填到输入框（正在输入时不打扰）
+      if (document.activeElement !== input) input.value = budget;
+
+      const spent = monthSpent();
+      const remain = budget - spent;
+      const pct = budget > 0 ? (spent / budget) * 100 : 0;
+      const barWidth = Math.min(pct, 100); // 进度条最多画到 100%
+
+      // 三档状态：ok（<80%）/ warn（80%~100%）/ over（>100%）
+      let state = "ok";
+      if (pct >= 100) state = "over";
+      else if (pct >= 80) state = "warn";
+
+      const remainText =
+        remain >= 0
+          ? `还剩 ${remain.toFixed(2)} 元`
+          : `已超支 ${Math.abs(remain).toFixed(2)} 元`;
+
+      let msg = `已用 ${pct.toFixed(0)}%`;
+      if (state === "warn") msg = `⚠️ 快到预算了，悠着点 · 已用 ${pct.toFixed(0)}%`;
+      if (state === "over") msg = `🚨 本月已超支！· 已用 ${pct.toFixed(0)}%`;
+
+      body.innerHTML = `
+        <div class="budget-nums">
+          <span>本月已花 <b>${spent.toFixed(2)}</b> / ${budget.toFixed(2)} 元</span>
+          <span class="budget-remain ${state}">${remainText}</span>
+        </div>
+        <div class="bar"><div class="bar-fill ${state}" style="width:${barWidth}%"></div></div>
+        <div class="budget-msg ${state}">${msg}</div>`;
+    }
+
     // 记一笔
     function addRecord() {
       const amountEl = document.getElementById("amount");
@@ -234,8 +353,9 @@
       render();
     }
 
-    // 重画整个界面：总额 + 分类汇总 + 列表
+    // 重画整个界面：本月预算 + 总额 + 分类汇总 + 列表
     function render() {
+      renderBudget(); // 记账/删除后，本月预算也要跟着更新
       const totalEl = document.getElementById("total");
       const byCatEl = document.getElementById("byCat");
       const listEl = document.getElementById("list");
@@ -316,6 +436,11 @@
 
     // ===== 把按钮和事件接起来 =====
     document.getElementById("addBtn").addEventListener("click", addRecord);
+    document.getElementById("saveBudgetBtn").addEventListener("click", setBudget);
+    // 在预算输入框按回车也能保存
+    document.getElementById("budgetInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") setBudget();
+    });
     document.getElementById("exportBtn").addEventListener("click", exportJSON);
     document.getElementById("importBtn").addEventListener("click", () =>
       document.getElementById("importFile").click());
