@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <!--
-  记账小工具 · 网页版（夜间霓虹金融风）
-  怎么用：直接双击本文件，它会用你的浏览器打开，不需要安装任何东西。
-  数据存在浏览器自己的仓库（localStorage）里。建议偶尔点一下「导出备份」防止丢失。
+  记账小工具 · 网页版（夜间霓虹金融风 + 云端同步）
+  数据存在 Supabase 云端，用 Google 登录，手机和电脑同步。
+  本地双击 file:// 打开时无法登录，请用线上网址使用。
 -->
 <html lang="zh-CN">
 <head>
@@ -13,221 +13,152 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
   <style>
-    /* ===== 配色集中放这里，想换风格改这几行就行 ===== */
     :root {
-      --bg:       #0e1116;   /* 深炭背景 */
-      --surface:  rgba(255, 255, 255, 0.045);  /* 毛玻璃卡片底 */
-      --surface2: rgba(255, 255, 255, 0.07);   /* 输入框底 */
+      --bg:       #0e1116;
+      --surface:  rgba(255, 255, 255, 0.045);
+      --surface2: rgba(255, 255, 255, 0.07);
       --border:   rgba(255, 255, 255, 0.09);
       --text:     #eef2f7;
       --muted:    #8b95a4;
-      --neon:     #b6ff3a;   /* 亮青霓虹（主色） */
-      --neon-ink: #0e1116;   /* 霓虹按钮上的字 */
-      --ok:       #b6ff3a;   /* 预算充足 */
-      --warn:     #ffc24b;   /* 接近预算 */
-      --over:     #ff5d73;   /* 已超支 */
+      --neon:     #b6ff3a;
+      --neon-ink: #0e1116;
+      --ok:       #b6ff3a;
+      --warn:     #ffc24b;
+      --over:     #ff5d73;
     }
-
     * { box-sizing: border-box; }
-
     body {
-      margin: 0;
-      padding: 28px 16px 48px;
-      background: var(--bg);
-      color: var(--text);
+      margin: 0; padding: 28px 16px 48px;
+      background: var(--bg); color: var(--text);
       font-family: "Sora", -apple-system, "Microsoft YaHei", sans-serif;
-      line-height: 1.5;
-      min-height: 100vh;
-      position: relative;
-      overflow-x: hidden;
+      line-height: 1.5; min-height: 100vh; position: relative; overflow-x: hidden;
     }
-
-    /* 背景氛围：两团柔和的光晕，让毛玻璃有东西可“透” */
-    body::before, body::after {
-      content: "";
-      position: fixed;
-      border-radius: 50%;
-      filter: blur(90px);
-      z-index: 0;
-      pointer-events: none;
-    }
-    body::before {
-      width: 460px; height: 460px;
-      background: radial-gradient(circle, rgba(182,255,58,0.22), transparent 70%);
-      top: -160px; left: -120px;
-    }
-    body::after {
-      width: 420px; height: 420px;
-      background: radial-gradient(circle, rgba(56,189,248,0.16), transparent 70%);
-      bottom: -160px; right: -120px;
-    }
+    body::before, body::after { content: ""; position: fixed; border-radius: 50%; filter: blur(90px); z-index: 0; pointer-events: none; }
+    body::before { width: 460px; height: 460px; background: radial-gradient(circle, rgba(182,255,58,0.22), transparent 70%); top: -160px; left: -120px; }
+    body::after  { width: 420px; height: 420px; background: radial-gradient(circle, rgba(56,189,248,0.16), transparent 70%); bottom: -160px; right: -120px; }
 
     .wrap { max-width: 560px; margin: 0 auto; position: relative; z-index: 1; }
 
-    /* ===== 顶部品牌区 ===== */
     .hero { text-align: center; margin: 6px 0 26px; }
-    .brand {
-      display: inline-flex; align-items: center; gap: 9px;
-      font-size: 24px; font-weight: 800; letter-spacing: 1px;
-    }
+    .brand { display: inline-flex; align-items: center; gap: 9px; font-size: 24px; font-weight: 800; letter-spacing: 1px; }
     .brand b { color: var(--neon); font-weight: 800; }
-    .brand .dot {
-      width: 11px; height: 11px; border-radius: 50%;
-      background: var(--neon);
-      box-shadow: 0 0 12px 2px var(--neon);
-      animation: pulse 2.2s ease-in-out infinite;
-    }
+    .brand .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--neon); box-shadow: 0 0 12px 2px var(--neon); animation: pulse 2.2s ease-in-out infinite; }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
     .tagline { margin: 8px 0 0; color: var(--muted); font-size: 13px; letter-spacing: 2px; }
 
-    /* ===== 卡片（毛玻璃 + 入场动画） ===== */
     .card {
-      background: var(--surface);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      padding: 20px;
-      margin-bottom: 16px;
+      background: var(--surface); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border); border-radius: 20px; padding: 20px; margin-bottom: 16px;
       box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
-      animation: rise .55s cubic-bezier(.2, .7, .2, 1) backwards;
-      animation-delay: calc(var(--i, 0) * 0.08s);
+      animation: rise .55s cubic-bezier(.2, .7, .2, 1) backwards; animation-delay: calc(var(--i, 0) * 0.08s);
     }
     @keyframes rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 
-    .label {
-      display: block;
-      font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase;
-      color: var(--muted); margin-bottom: 4px;
-    }
-
-    /* 数字统一用等宽字体，对齐更好看 */
+    .label { display: block; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
     .total, .amount, .budget-remain, .budget-sub, .by-cat { font-variant-numeric: tabular-nums; }
 
-    /* ===== 累计总额 ===== */
-    .total {
-      font-family: "JetBrains Mono", monospace;
-      font-size: 30px; font-weight: 700; color: var(--text);
-      margin-top: 2px;
-    }
+    .total { font-family: "JetBrains Mono", monospace; font-size: 30px; font-weight: 700; color: var(--text); margin-top: 2px; }
     .total small { font-size: 13px; color: var(--muted); font-weight: 500; font-family: "Sora", sans-serif; }
     .by-cat { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
-    .by-cat span {
-      font-size: 13px; color: var(--text);
-      background: var(--surface2); border: 1px solid var(--border);
-      padding: 3px 10px; border-radius: 999px;
-    }
+    .by-cat span { font-size: 13px; color: var(--text); background: var(--surface2); border: 1px solid var(--border); padding: 3px 10px; border-radius: 999px; }
 
-    /* ===== 本月预算 ===== */
     .card-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
     .budget-set { display: flex; gap: 8px; }
-    .budget-set input {
-      width: 118px; padding: 9px 12px; font-size: 14px;
-      background: var(--surface2); color: var(--text);
-      border: 1px solid var(--border); border-radius: 12px;
-      font-family: "JetBrains Mono", monospace;
-    }
-    .budget-set button {
-      background: var(--neon); color: var(--neon-ink);
-      font-weight: 700; padding: 9px 16px; border-radius: 12px;
-    }
+    .budget-set input { width: 118px; padding: 9px 12px; font-size: 14px; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 12px; font-family: "JetBrains Mono", monospace; }
+    .budget-set button { background: var(--neon); color: var(--neon-ink); font-weight: 700; padding: 9px 16px; border-radius: 12px; }
     .budget-empty { color: var(--muted); font-size: 14px; margin-top: 16px; }
-
     .budget-hero { margin-top: 16px; }
     .budget-remain-label { display: block; font-size: 13px; color: var(--muted); letter-spacing: 1px; }
-    .budget-remain {
-      font-family: "JetBrains Mono", monospace;
-      font-size: 44px; font-weight: 700; line-height: 1.1;
-      display: inline-block; margin-top: 2px;
-    }
+    .budget-remain { font-family: "JetBrains Mono", monospace; font-size: 44px; font-weight: 700; line-height: 1.1; display: inline-block; margin-top: 2px; }
     .budget-remain.ok   { color: var(--ok);   text-shadow: 0 0 22px rgba(182, 255, 58, 0.45); }
     .budget-remain.warn { color: var(--warn); text-shadow: 0 0 22px rgba(255, 194, 75, 0.4); }
     .budget-remain.over { color: var(--over); text-shadow: 0 0 22px rgba(255, 93, 115, 0.5); }
     .budget-sub { font-size: 13px; color: var(--muted); margin-top: 6px; }
-
-    /* 进度条 */
-    .bar {
-      height: 12px; background: rgba(255, 255, 255, 0.06);
-      border-radius: 999px; overflow: hidden; margin: 16px 0 10px;
-      border: 1px solid var(--border);
-    }
+    .bar { height: 12px; background: rgba(255, 255, 255, 0.06); border-radius: 999px; overflow: hidden; margin: 16px 0 10px; border: 1px solid var(--border); }
     .bar-fill { height: 100%; width: 0; border-radius: 999px; transition: width .6s cubic-bezier(.2, .7, .2, 1); }
     .bar-fill.ok   { background: linear-gradient(90deg, #7ad900, var(--ok));   box-shadow: 0 0 14px rgba(182, 255, 58, 0.6); }
     .bar-fill.warn { background: linear-gradient(90deg, #f0a91f, var(--warn)); box-shadow: 0 0 14px rgba(255, 194, 75, 0.55); }
     .bar-fill.over { background: linear-gradient(90deg, #ff2d50, var(--over)); box-shadow: 0 0 14px rgba(255, 93, 115, 0.6); }
-
     .budget-msg { font-size: 13px; font-weight: 600; }
     .budget-msg.ok   { color: var(--muted); font-weight: 500; }
     .budget-msg.warn { color: var(--warn); }
     .budget-msg.over { color: var(--over); }
 
-    /* ===== 记一笔 表单 ===== */
     .fields { margin-top: 14px; }
     .field { margin-bottom: 12px; }
     .field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 5px; }
-    .field input {
-      width: 100%; padding: 12px 14px; font-size: 15px;
-      background: var(--surface2); color: var(--text);
-      border: 1px solid var(--border); border-radius: 12px;
-      transition: border-color .2s, box-shadow .2s;
-    }
+    .field input { width: 100%; padding: 12px 14px; font-size: 15px; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 12px; transition: border-color .2s, box-shadow .2s; }
     .field input::placeholder, .budget-set input::placeholder { color: #5d6675; }
-    .field input:focus, .budget-set input:focus {
-      outline: none; border-color: var(--neon);
-      box-shadow: 0 0 0 3px rgba(182, 255, 58, 0.15);
-    }
+    .field input:focus, .budget-set input:focus { outline: none; border-color: var(--neon); box-shadow: 0 0 0 3px rgba(182, 255, 58, 0.15); }
 
     button { font-family: inherit; font-size: 15px; border: none; border-radius: 12px; cursor: pointer; transition: transform .12s ease, box-shadow .2s, background .2s; }
     button:active { transform: scale(0.98); }
-    .btn-primary {
-      width: 100%; padding: 13px; margin-top: 4px;
-      background: var(--neon); color: var(--neon-ink); font-weight: 700; letter-spacing: 0.5px;
-      box-shadow: 0 0 0 rgba(182, 255, 58, 0);
-    }
+    .btn-primary { width: 100%; padding: 13px; margin-top: 4px; background: var(--neon); color: var(--neon-ink); font-weight: 700; letter-spacing: 0.5px; }
     .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(182, 255, 58, 0.3); }
 
     .hint { font-size: 13px; min-height: 18px; margin-top: 10px; color: var(--neon); }
     .hint.error { color: var(--over); }
 
-    /* ===== 列表 ===== */
-    .item {
-      display: flex; align-items: center; gap: 10px;
-      padding: 14px 0; border-bottom: 1px solid var(--border);
-    }
+    .item { display: flex; align-items: center; gap: 10px; padding: 14px 0; border-bottom: 1px solid var(--border); }
     .item:last-child { border-bottom: none; }
     .item .left { flex: 1; min-width: 0; }
-    .item .left .cat {
-      display: inline-block; font-size: 12px; font-weight: 600;
-      background: var(--neon-dim, rgba(182, 255, 58, 0.14)); color: var(--neon);
-      padding: 2px 9px; border-radius: 999px; margin-right: 8px;
-    }
+    .item .left .cat { display: inline-block; font-size: 12px; font-weight: 600; background: rgba(182, 255, 58, 0.14); color: var(--neon); padding: 2px 9px; border-radius: 999px; margin-right: 8px; }
     .item .left .note { color: var(--text); }
     .item .left .time { display: block; font-size: 12px; color: var(--muted); margin-top: 3px; font-family: "JetBrains Mono", monospace; }
     .item .amount { font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 16px; white-space: nowrap; }
-    .item .del {
-      background: transparent; color: var(--muted); font-size: 13px; padding: 6px 8px; border-radius: 8px;
-    }
+    .item .del { background: transparent; color: var(--muted); font-size: 13px; padding: 6px 8px; border-radius: 8px; }
     .item .del:hover { color: var(--over); background: rgba(255, 93, 115, 0.1); }
     .empty { color: var(--muted); text-align: center; padding: 24px 0; }
 
-    /* ===== 底部工具 ===== */
     .tools { display: flex; gap: 12px; }
-    .tools button {
-      flex: 1; padding: 13px; background: var(--surface);
-      border: 1px solid var(--border); color: var(--text); font-weight: 500;
-      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-    }
+    .tools button { flex: 1; padding: 13px; background: var(--surface); border: 1px solid var(--border); color: var(--text); font-weight: 500; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
     .tools button:hover { border-color: var(--neon); color: var(--neon); }
+
+    /* 登录界面 */
+    .login-card { text-align: center; }
+    .login-card p { color: var(--muted); font-size: 14px; margin: 4px 0 18px; }
+    .btn-google { width: 100%; padding: 13px; background: #fff; color: #1f2328; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 10px; }
+    .btn-google:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(255,255,255,0.15); }
+    .btn-google svg { width: 18px; height: 18px; }
+
+    /* 顶部用户条 */
+    .userbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 16px; font-size: 13px; color: var(--muted); }
+    .userbar .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .userbar .logout { background: var(--surface); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; font-size: 13px; }
+    .userbar .logout:hover { border-color: var(--neon); color: var(--neon); }
 
     ::selection { background: var(--neon); color: var(--neon-ink); }
   </style>
 </head>
 <body>
-  <div class="wrap">
+  <!-- ===== 登录界面（未登录时显示）===== -->
+  <div id="login-view" class="wrap" style="display:none">
     <header class="hero">
       <div class="brand"><span class="dot"></span>MONEY<b>FLOW</b></div>
       <p class="tagline">管住钱包 · 从看清开始</p>
     </header>
+    <section class="card login-card" style="--i:1">
+      <span class="label">登录</span>
+      <p>登录后，你的账本会安全地存在云端，手机和电脑自动同步。</p>
+      <button id="googleBtn" class="btn-google">
+        <svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        使用 Google 登录
+      </button>
+      <div class="hint" id="loginHint"></div>
+    </section>
+  </div>
+
+  <!-- ===== 主应用（登录后显示）===== -->
+  <div id="app-view" class="wrap" style="display:none">
+    <header class="hero">
+      <div class="brand"><span class="dot"></span>MONEY<b>FLOW</b></div>
+      <p class="tagline">管住钱包 · 从看清开始</p>
+    </header>
+
+    <div class="userbar">
+      <span class="who" id="userEmail"></span>
+      <button class="logout" id="logoutBtn">退出登录</button>
+    </div>
 
     <!-- 本月预算 -->
     <section class="card" style="--i:1">
@@ -279,114 +210,162 @@
     <div class="tools">
       <button id="exportBtn">⬇ 导出备份</button>
       <button id="importBtn">⬆ 导入备份</button>
-      <!-- 真正的文件选择框藏起来，点「导入备份」时触发它 -->
       <input type="file" id="importFile" accept="application/json,.json" hidden>
     </div>
   </div>
 
-  <!-- 先加载核心计算逻辑（纯算钱的部分，和测试共用同一份） -->
+  <!-- Supabase 官方库（云端数据库 + 登录） -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- 核心计算逻辑（纯算钱，和测试共用） -->
   <script src="logic.js"></script>
   <script>
-    // ===== 初始数据：来自原来的 data.json，首次打开时自动带进来 =====
-    const SEED = [
-      { amount: 35.5, category: "餐饮", note: "午饭",   time: "2026-06-02 00:17" },
-      { amount: 20.0, category: "交通", note: "",       time: "2026-06-02 00:17" },
-      { amount: 100.0, category: "购物", note: "买书",   time: "2026-06-02 00:17" },
-      { amount: 25.9, category: "餐饮", note: "塔斯汀", time: "2026-06-02 00:30" }
-    ];
+    // ===== 连接 Supabase（这个公开密钥可以放进网页，安全靠数据库的行级权限）=====
+    const SUPA_URL = "https://spavepwzzxcslbcxgdbv.supabase.co";
+    const SUPA_KEY = "sb_publishable_SQWsdKLj1In6rTgWplSyxQ_IhhACs1F";
+    const sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
 
-    const STORAGE_KEY = "jizhang_records";
+    // 内存里的数据（从云端读来）
+    let records = [];
+    let budget = null;        // 本月预算（数字或 null）
+    let currentUser = null;
 
-    // 从浏览器仓库读数据；如果是第一次（仓库为空），就把 SEED 写进去
-    function load() {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw === null) {
-        save(SEED);          // 首次迁移：把原有 4 笔存进去
-        return SEED.slice();
+    // 当前时间字符串（用 logic.js 的共用函数）
+    function now() { return formatDateTime(new Date()); }
+    function currentMonth() { return monthKey(new Date()); }
+
+    // ===== 登录相关 =====
+    function showLogin() {
+      document.getElementById("login-view").style.display = "";
+      document.getElementById("app-view").style.display = "none";
+    }
+    function showApp() {
+      document.getElementById("login-view").style.display = "none";
+      document.getElementById("app-view").style.display = "";
+    }
+
+    async function handleSession(session) {
+      currentUser = session ? session.user : null;
+      if (currentUser) {
+        document.getElementById("userEmail").textContent = currentUser.email || "已登录";
+        showApp();
+        await refresh();
+        await maybeMigrateLocal();   // 首次登录时把本地旧数据搬上云端
+      } else {
+        showLogin();
       }
-      try {
-        return JSON.parse(raw);
-      } catch (e) {
-        // 仓库内容坏了就当空账本，避免页面打不开
-        alert("读取数据出错，已重置为空账本。");
-        return [];
+    }
+
+    async function signInGoogle() {
+      const hint = document.getElementById("loginHint");
+      hint.className = "hint";
+      hint.textContent = "正在跳转到 Google…";
+      const { error } = await sb.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: window.location.origin + window.location.pathname },
+      });
+      if (error) { hint.className = "hint error"; hint.textContent = "登录出错：" + error.message; }
+    }
+
+    async function signOut() {
+      await sb.auth.signOut();
+      records = []; budget = null;
+    }
+
+    // ===== 云端读写 =====
+    async function loadAll() {
+      const { data: exp, error } = await sb
+        .from("expenses")
+        .select("id, amount, category, note, time")
+        .order("time", { ascending: true });
+      if (error) { console.error(error); alert("读取数据出错：" + error.message); records = []; }
+      else { records = (exp || []).map((r) => ({ ...r, amount: Number(r.amount) })); }
+
+      const { data: s } = await sb.from("settings").select("monthly_budget").maybeSingle();
+      budget = s && s.monthly_budget != null ? Number(s.monthly_budget) : null;
+    }
+
+    async function refresh() { await loadAll(); render(); }
+
+    // 首次登录：若本地浏览器存有旧数据、且云端为空，问要不要搬上去
+    async function maybeMigrateLocal() {
+      const raw = localStorage.getItem("jizhang_records");
+      if (!raw) return;
+      let local;
+      try { local = JSON.parse(raw); } catch (e) { return; }
+      if (!Array.isArray(local) || local.length === 0) return;
+      if (records.length > 0) return;   // 云端已有数据就不动
+      if (!confirm(`发现本地有 ${local.length} 笔旧记录，要上传到云端账本吗？`)) return;
+      const rows = local.map((r) => ({
+        amount: Number(r.amount), category: r.category || "未分类",
+        note: r.note || "", time: r.time || now(),
+      }));
+      const { error } = await sb.from("expenses").insert(rows);
+      if (error) { alert("迁移出错：" + error.message); return; }
+      localStorage.removeItem("jizhang_records");   // 搬完清掉，避免重复问
+      await refresh();
+      alert("旧数据已上传到云端！");
+    }
+
+    // ===== 记一笔 =====
+    async function addRecord() {
+      const amountEl = document.getElementById("amount");
+      const categoryEl = document.getElementById("category");
+      const noteEl = document.getElementById("note");
+      const hint = document.getElementById("hint");
+      hint.className = "hint"; hint.textContent = "";
+
+      if (!isValidAmount(amountEl.value)) {
+        hint.className = "hint error"; hint.textContent = "请填一个大于 0 的金额。"; return;
       }
+      const rec = {
+        amount: parseFloat(amountEl.value),
+        category: categoryEl.value.trim() || "未分类",
+        note: noteEl.value.trim(),
+        time: now(),
+      };
+      const { error } = await sb.from("expenses").insert(rec);
+      if (error) { hint.className = "hint error"; hint.textContent = "记账出错：" + error.message; return; }
+
+      amountEl.value = ""; categoryEl.value = ""; noteEl.value = ""; amountEl.focus();
+      await refresh();
+      hint.textContent = "✓ 记账成功！";
     }
 
-    // 把数据写回浏览器仓库
-    function save(records) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    // 删除某一笔（按云端记录的 id）
+    async function deleteRecord(id) {
+      if (!confirm("确定删除这一笔吗？")) return;
+      const { error } = await sb.from("expenses").delete().eq("id", id);
+      if (error) { alert("删除出错：" + error.message); return; }
+      await refresh();
     }
 
-    // 当前账本（内存里的一份），所有操作都改它再 save + render
-    let records = load();
-
-    // 当前时间字符串，如 “2026-06-02 14:30”（用 logic.js 里的共用函数）
-    function now() {
-      return formatDateTime(new Date());
-    }
-
-    // ===== 本月预算相关 =====
-    const BUDGET_KEY = "jizhang_budget";
-
-    // 读/存预算金额（没设过返回 null）
-    function loadBudget() {
-      const raw = localStorage.getItem(BUDGET_KEY);
-      return raw === null ? null : parseFloat(raw);
-    }
-    function saveBudget(value) {
-      localStorage.setItem(BUDGET_KEY, String(value));
-    }
-
-    // 当前年月，例如 "2026-06"（用 logic.js 里的共用函数）
-    function currentMonth() {
-      return monthKey(new Date());
-    }
-
-    // 本月已花：调用共用函数，只统计当前这个月的记录
-    function monthSpent() {
-      return sumByMonth(records, currentMonth());
-    }
-
-    // 点「保存」设定预算
-    function setBudget() {
+    // 保存本月预算
+    async function setBudget() {
       const input = document.getElementById("budgetInput");
-      if (!isValidAmount(input.value)) {
-        alert("请填一个大于 0 的预算金额。");
-        return;
-      }
+      if (!isValidAmount(input.value)) { alert("请填一个大于 0 的预算金额。"); return; }
       const value = parseFloat(input.value);
-      saveBudget(value);
+      const { error } = await sb.from("settings").upsert({ user_id: currentUser.id, monthly_budget: value });
+      if (error) { alert("保存预算出错：" + error.message); return; }
+      budget = value;
       renderBudget();
     }
 
-    // 重画本月预算区：剩余（大数字）/ 已花 / 进度条 / 三档颜色提醒
+    // ===== 画界面 =====
     function renderBudget() {
       const body = document.getElementById("budgetBody");
       const input = document.getElementById("budgetInput");
-      const budget = loadBudget();
-
-      // 还没设预算
       if (budget === null || isNaN(budget)) {
-        body.innerHTML =
-          '<div class="budget-empty">还没设本月预算，上面填个金额点「保存」，就能开始管控啦 👆</div>';
+        body.innerHTML = '<div class="budget-empty">还没设本月预算，上面填个金额点「保存」，就能开始管控啦 👆</div>';
         return;
       }
-
-      // 把已设的预算回填到输入框（正在输入时不打扰）
       if (document.activeElement !== input) input.value = budget;
-
-      // 用共用函数算出 已用百分比 / 剩余 / 三档状态(ok/warn/over)
-      const spent = monthSpent();
+      const spent = sumByMonth(records, currentMonth());
       const { pct, remain, state } = budgetStatus(spent, budget);
-      const barWidth = Math.min(pct, 100); // 进度条最多画到 100%
-
+      const barWidth = Math.min(pct, 100);
       const remainLabel = remain >= 0 ? "本月还剩" : "本月已超支";
-
       let msg = `已用 ${pct.toFixed(0)}%`;
       if (state === "warn") msg = `⚠️ 快到预算了，悠着点 · 已用 ${pct.toFixed(0)}%`;
       if (state === "over") msg = `🚨 本月已超支！· 已用 ${pct.toFixed(0)}%`;
-
       body.innerHTML = `
         <div class="budget-hero">
           <span class="budget-remain-label">${remainLabel}</span>
@@ -397,150 +376,94 @@
         <div class="budget-msg ${state}">${msg}</div>`;
     }
 
-    // 记一笔
-    function addRecord() {
-      const amountEl = document.getElementById("amount");
-      const categoryEl = document.getElementById("category");
-      const noteEl = document.getElementById("note");
-      const hint = document.getElementById("hint");
-      hint.className = "hint";
-      hint.textContent = "";
-
-      // 校验金额：必须是大于 0 的数字（用共用函数）
-      if (!isValidAmount(amountEl.value)) {
-        hint.className = "hint error";
-        hint.textContent = "请填一个大于 0 的金额。";
-        return;
-      }
-      const amount = parseFloat(amountEl.value);
-
-      const category = categoryEl.value.trim() || "未分类";
-      const note = noteEl.value.trim();
-
-      records.push({ amount, category, note, time: now() });
-      save(records);
-      render();
-
-      // 清空输入框，光标回到金额，方便连续记账
-      amountEl.value = "";
-      categoryEl.value = "";
-      noteEl.value = "";
-      amountEl.focus();
-      hint.textContent = "✓ 记账成功！";
-    }
-
-    // 删除某一笔（按列表里的序号）
-    function deleteRecord(index) {
-      if (!confirm("确定删除这一笔吗？")) return;
-      records.splice(index, 1);
-      save(records);
-      render();
-    }
-
-    // 重画整个界面：本月预算 + 总额 + 分类汇总 + 列表
     function render() {
-      renderBudget(); // 记账/删除后，本月预算也要跟着更新
+      renderBudget();
       const totalEl = document.getElementById("total");
       const byCatEl = document.getElementById("byCat");
       const listEl = document.getElementById("list");
 
-      // 1) 总额（用共用函数）
       const total = sumAll(records);
       totalEl.innerHTML = `总共花了 ${total.toFixed(2)} 元 <small>（${records.length} 笔）</small>`;
 
-      // 2) 按分类汇总（用共用函数，已按金额从高到低排好）
       const cats = sumByCategory(records);
-      byCatEl.innerHTML = cats
-        .map(([c, amt]) => `<span>${escapeHtml(c)} ${amt.toFixed(2)}</span>`)
-        .join("");
+      byCatEl.innerHTML = cats.map(([c, amt]) => `<span>${escapeHtml(c)} ${amt.toFixed(2)}</span>`).join("");
 
-      // 3) 列表（最新的显示在最上面）
       if (records.length === 0) {
         listEl.innerHTML = '<div class="empty">还没有任何消费记录</div>';
         return;
       }
-      listEl.innerHTML = records
-        .map((r, i) => {
-          const note = r.note ? escapeHtml(r.note) : "（无备注）";
-          return `
-            <div class="item">
-              <div class="left">
-                <span class="cat">${escapeHtml(r.category)}</span>
-                <span class="note">${note}</span>
-                <span class="time">${r.time}</span>
-              </div>
-              <span class="amount">${r.amount.toFixed(2)} 元</span>
-              <button class="del" data-index="${i}">删除</button>
-            </div>`;
-        })
-        .reverse()       // 让最新的一笔排在最上面
-        .join("");
+      listEl.innerHTML = records.map((r) => {
+        const note = r.note ? escapeHtml(r.note) : "（无备注）";
+        return `
+          <div class="item">
+            <div class="left">
+              <span class="cat">${escapeHtml(r.category)}</span>
+              <span class="note">${note}</span>
+              <span class="time">${r.time}</span>
+            </div>
+            <span class="amount">${r.amount.toFixed(2)} 元</span>
+            <button class="del" data-id="${r.id}">删除</button>
+          </div>`;
+      }).reverse().join("");
     }
 
-    // 把用户输入里的特殊字符转义，防止显示出错
     function escapeHtml(s) {
-      return s.replace(/[&<>"]/g, (c) =>
-        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
     }
 
-    // 导出备份：把数据下载成一个 JSON 文件
+    // 导出备份：把当前云端数据下载成 JSON
     function exportJSON() {
-      const text = JSON.stringify(records, null, 2);
+      const text = JSON.stringify(records.map(({ amount, category, note, time }) => ({ amount, category, note, time })), null, 2);
       const blob = new Blob([text], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = "jizhang-备份.json";
-      a.click();
+      a.href = url; a.download = "jizhang-备份.json"; a.click();
       URL.revokeObjectURL(url);
     }
 
-    // 导入备份：读用户选的 JSON 文件，校验后覆盖当前数据
+    // 导入备份：把文件里的记录【追加】到云端
     function importJSON(file) {
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.onload = async () => {
         try {
           const data = JSON.parse(reader.result);
           if (!Array.isArray(data)) throw new Error("格式不对");
-          if (!confirm("导入会覆盖当前所有数据，确定吗？")) return;
-          records = data;
-          save(records);
-          render();
+          if (!confirm(`将把备份里的 ${data.length} 笔记录添加到你的云端账本，确定吗？`)) return;
+          const rows = data.map((r) => ({
+            amount: Number(r.amount), category: r.category || "未分类",
+            note: r.note || "", time: r.time || now(),
+          }));
+          const { error } = await sb.from("expenses").insert(rows);
+          if (error) throw error;
+          await refresh();
           alert("导入成功！");
         } catch (e) {
-          alert("这个文件不是有效的备份文件。");
+          alert("导入失败：" + (e.message || "这个文件不是有效的备份文件。"));
         }
       };
       reader.readAsText(file);
     }
 
-    // ===== 把按钮和事件接起来 =====
+    // ===== 事件绑定 =====
+    document.getElementById("googleBtn").addEventListener("click", signInGoogle);
+    document.getElementById("logoutBtn").addEventListener("click", signOut);
     document.getElementById("addBtn").addEventListener("click", addRecord);
     document.getElementById("saveBudgetBtn").addEventListener("click", setBudget);
-    // 在预算输入框按回车也能保存
-    document.getElementById("budgetInput").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") setBudget();
-    });
+    document.getElementById("budgetInput").addEventListener("keydown", (e) => { if (e.key === "Enter") setBudget(); });
+    document.getElementById("note").addEventListener("keydown", (e) => { if (e.key === "Enter") addRecord(); });
     document.getElementById("exportBtn").addEventListener("click", exportJSON);
-    document.getElementById("importBtn").addEventListener("click", () =>
-      document.getElementById("importFile").click());
+    document.getElementById("importBtn").addEventListener("click", () => document.getElementById("importFile").click());
     document.getElementById("importFile").addEventListener("change", (e) => {
       if (e.target.files.length) importJSON(e.target.files[0]);
-      e.target.value = "";   // 清掉，方便下次再选同一个文件
+      e.target.value = "";
     });
-    // 在备注框按回车也能记一笔
-    document.getElementById("note").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") addRecord();
-    });
-    // 列表里的「删除」按钮（事件委托：列表是动态生成的）
     document.getElementById("list").addEventListener("click", (e) => {
-      if (e.target.classList.contains("del")) {
-        deleteRecord(Number(e.target.dataset.index));
-      }
+      if (e.target.classList.contains("del")) deleteRecord(e.target.dataset.id);
     });
 
-    // 页面打开时先画一次
-    render();
+    // ===== 启动：检查登录状态 =====
+    sb.auth.getSession().then(({ data }) => handleSession(data.session));
+    sb.auth.onAuthStateChange((_event, session) => handleSession(session));
   </script>
 </body>
 </html>
