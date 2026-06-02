@@ -91,6 +91,15 @@
     .field input::placeholder, .budget-set input::placeholder { color: #5d6675; }
     .field input:focus, .budget-set input:focus { outline: none; border-color: var(--neon); box-shadow: 0 0 0 3px rgba(182, 255, 58, 0.15); }
 
+    /* AI 一句话记账 */
+    .ai-row { display: flex; gap: 8px; margin: 14px 0 6px; }
+    .ai-row input { flex: 1; min-width: 0; padding: 12px 14px; font-size: 15px; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 12px; }
+    .ai-row input::placeholder { color: #5d6675; }
+    .ai-row input:focus { outline: none; border-color: var(--neon); box-shadow: 0 0 0 3px rgba(182, 255, 58, 0.15); }
+    .ai-row button { white-space: nowrap; background: var(--neon); color: var(--neon-ink); font-weight: 700; padding: 0 16px; border-radius: 12px; }
+    .ai-row button:disabled { opacity: 0.55; cursor: default; }
+    .ai-divider { font-size: 12px; color: var(--muted); text-align: center; margin: 4px 0 2px; letter-spacing: 1px; }
+
     button { font-family: inherit; font-size: 15px; border: none; border-radius: 12px; cursor: pointer; transition: transform .12s ease, box-shadow .2s, background .2s; }
     button:active { transform: scale(0.98); }
     .btn-primary { width: 100%; padding: 13px; margin-top: 4px; background: var(--neon); color: var(--neon-ink); font-weight: 700; letter-spacing: 0.5px; }
@@ -182,6 +191,12 @@
     <!-- 记一笔 -->
     <section class="card" style="--i:3">
       <span class="label">记一笔</span>
+      <div class="ai-row">
+        <input type="text" id="aiInput" placeholder="✨ 用一句话记账，如：今天星巴克 38">
+        <button id="aiBtn">AI 识别</button>
+      </div>
+      <div class="hint" id="aiHint"></div>
+      <div class="ai-divider">— 或手动填写 —</div>
       <div class="fields">
         <div class="field">
           <label>金额（元）</label>
@@ -311,6 +326,43 @@
       localStorage.removeItem("jizhang_records");   // 搬完清掉，避免重复问
       await refresh();
       alert("旧数据已上传到云端！");
+    }
+
+    // ===== AI 一句话记账：调用后端 /api/parse，把识别结果填进下面的表单 =====
+    async function aiParse() {
+      const aiInput = document.getElementById("aiInput");
+      const aiHint = document.getElementById("aiHint");
+      const aiBtn = document.getElementById("aiBtn");
+      const text = aiInput.value.trim();
+      aiHint.className = "hint";
+      if (!text) { aiHint.className = "hint error"; aiHint.textContent = "先输入一句话，比如「星巴克 38」"; return; }
+
+      aiBtn.disabled = true;
+      aiHint.textContent = "AI 识别中…";
+      try {
+        const r = await fetch("/api/parse", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          aiHint.className = "hint error";
+          aiHint.textContent = "识别失败：" + (data.error || ("HTTP " + r.status));
+          return;
+        }
+        // 填进下面的表单，等你核对后点「记一笔」
+        document.getElementById("amount").value = data.amount ? data.amount : "";
+        document.getElementById("category").value = data.category || "";
+        document.getElementById("note").value = data.note || "";
+        aiHint.textContent = "✓ 已识别，请核对金额/分类后点「记一笔」";
+        document.getElementById("amount").focus();
+      } catch (e) {
+        aiHint.className = "hint error";
+        aiHint.textContent = "识别出错（AI 功能需用 Vercel 网址访问）：" + (e.message || e);
+      } finally {
+        aiBtn.disabled = false;
+      }
     }
 
     // ===== 记一笔 =====
@@ -465,6 +517,8 @@
     document.getElementById("googleBtn").addEventListener("click", signInGoogle);
     document.getElementById("logoutBtn").addEventListener("click", signOut);
     document.getElementById("addBtn").addEventListener("click", addRecord);
+    document.getElementById("aiBtn").addEventListener("click", aiParse);
+    document.getElementById("aiInput").addEventListener("keydown", (e) => { if (e.key === "Enter") aiParse(); });
     document.getElementById("saveBudgetBtn").addEventListener("click", setBudget);
     document.getElementById("budgetInput").addEventListener("keydown", (e) => { if (e.key === "Enter") setBudget(); });
     document.getElementById("note").addEventListener("keydown", (e) => { if (e.key === "Enter") addRecord(); });
