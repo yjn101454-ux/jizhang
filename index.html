@@ -228,6 +228,9 @@
         autoRefreshToken: true,     // 自动续期
         detectSessionInUrl: true,   // 登录跳转回来时自动取出登录态
         flowType: "pkce",
+        // 关键：用「无操作锁」绕开 supabase-js 的 navigator.locks 死锁，
+        // 否则刷新后 getSession() 会卡住导致白屏。单用户场景下这样完全安全。
+        lock: (name, acquireTimeout, fn) => fn(),
       },
     });
 
@@ -478,22 +481,11 @@
       if (e.target.classList.contains("del")) deleteRecord(e.target.dataset.id);
     });
 
-    // ===== 启动：检查登录状态（带诊断）=====
-    async function initAuth() {
-      const authKeys = Object.keys(localStorage).filter((k) => k.startsWith("sb-"));
-      let res;
-      try { res = await sb.auth.getSession(); }
-      catch (e) { res = { error: e }; }
-      const session = res && res.data ? res.data.session : null;
-      if (!session) {
-        const why = authKeys.length ? "已保存但未能恢复" : "未保存";
-        const el = document.getElementById("loginHint");
-        if (el) { el.className = "hint"; el.textContent = "（诊断：登录态" + why + (res.error ? "，错误：" + res.error.message : "") + "）"; }
-      }
-      handleSession(session);
-      sb.auth.onAuthStateChange((_event, s) => handleSession(s));
-    }
-    initAuth();
+    // ===== 启动：检查登录状态 =====
+    sb.auth.onAuthStateChange((_event, session) => handleSession(session));
+    sb.auth.getSession()
+      .then(({ data }) => handleSession(data.session))
+      .catch(() => handleSession(null));
   </script>
 </body>
 </html>
