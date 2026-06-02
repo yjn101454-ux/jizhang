@@ -28,6 +28,7 @@ GitHub 仓库：https://github.com/yjn101454-ux/jizhang （公开）。每次 pu
 - 仓库已连两处自动部署：**GitHub Pages**（main 分支 / 根目录）和 **Vercel**（项目 `jizhang`，团队「yjn101454-9383's projects」，已接 GitHub）。一次 `git push` → CI 测试 + 两个线上版都自动更新。
 - `.vercelignore` 负责部署到 Vercel 时排除私人数据（`data.json`）；`.vercel/` 是本地链接配置，已被 git 忽略。
 - **数据库 & 登录**：Supabase 项目 `jizhang`（id `spavepwzzxcslbcxgdbv`，区域 ap-south-1）。Google 登录已配好（Google Cloud OAuth + Supabase Google Provider + URL 白名单含两个线上网址与 `localhost:8000`）。改表/查数据可用 Supabase MCP。
+- **AI**：用 DeepSeek（OpenAI 兼容接口，`deepseek-chat` 模型）。key 存在 Vercel 环境变量 `DEEPSEEK_API_KEY`（只在服务端、不入代码/git）。改完环境变量需重新部署才生效。
 
 ## 文件清单
 | 文件 | 作用 |
@@ -36,6 +37,7 @@ GitHub 仓库：https://github.com/yjn101454-ux/jizhang （公开）。每次 pu
 | `logic.js` | **核心计算逻辑**（算总额、本月已花、预算三档、金额校验等纯计算）。网页和测试共用这一份。 |
 | `logic.test.js` | `logic.js` 的测试，用 `node --test` 跑。 |
 | `.github/workflows/test.yml` | CI 配置：每次 push 让 GitHub 自动跑 `node --test`。 |
+| `api/parse.js` | **AI 后端**（Vercel serverless 函数）：调 DeepSeek 把一句话解析成 金额/分类/备注；key 从环境变量读。接口 `/api/parse`，只在 Vercel 生效。 |
 | `jizhang.py` | 最早的终端版，留作纪念，不再使用。 |
 | `data.json` | 终端版的数据文件（被 git 忽略）。网页版**不用**它。 |
 | `.gitignore` | 告诉 git 哪些文件不纳入版本库（个人数据、本地配置等）。 |
@@ -72,15 +74,15 @@ git 已经初始化，我们一路在提交。
 **已完成 第 3b 步（多设备数据同步）**：用 Supabase 云数据库 + Google 登录，数据存云端、按用户隔离（RLS），手机和电脑共用同一份账。已在真实浏览器端到端验证：登录态与数据刷新后都不丢。
 - 踩过的坑（别再犯）：不要在 `onAuthStateChange` 回调里直接 `await` 调用 supabase 数据接口，会和它的内部锁死锁导致刷新后白屏——要用 `setTimeout(…, 0)` 把数据库调用挪出回调。
 
-**马上要做**：第 4 步（AI 功能）。
+**进行中 第 4 步（AI 功能）**：✅ 功能 1「自然语言记账」已完成（DeepSeek 解析，后端 `api/parse.js`，已在真实浏览器端到端验证）；⬜ 功能 2「AI 周报」待做。
 
 ## 接下来要做的（按顺序进行，一次只做一步）
 
 （第 1、2、3a、3b 步已完成，详见上面「当前进度」。）
 
 ### 第 4 步：加 AI 功能（我懂 AI，这部分我最期待）
-- 自然语言记账：我打一句「今天星巴克 38」，AI 自动识别出金额和分类
-- AI 周报：每周分析我的消费、找出超支的地方、给我改进建议
+- ✅ 自然语言记账：打一句「今天星巴克 38」，AI 自动识别金额/分类/备注（已完成）
+- ⬜ AI 周报：每周分析消费、找出超支的地方、给改进建议（下一个）
 
 ## 两层安全网（别忘了）
 - **git**：每个能跑的版本存一个档，改坏了能退回去。
