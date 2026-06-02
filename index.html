@@ -323,20 +323,31 @@
         note: noteEl.value.trim(),
         time: now(),
       };
-      const { error } = await sb.from("expenses").insert(rec);
-      if (error) { hint.className = "hint error"; hint.textContent = "记账出错：" + error.message; return; }
-
+      // 乐观更新：先在界面上立刻显示，再同步到云端
+      const tempId = "temp-" + Date.now();
+      records.push({ ...rec, id: tempId });
+      render();
       amountEl.value = ""; categoryEl.value = ""; noteEl.value = ""; amountEl.focus();
-      await refresh();
+      hint.textContent = "保存中…";
+
+      const { data, error } = await sb.from("expenses").insert(rec).select().single();
+      if (error) {
+        records = records.filter((r) => r.id !== tempId); render();
+        hint.className = "hint error"; hint.textContent = "记账失败：" + error.message; return;
+      }
+      const i = records.findIndex((r) => r.id === tempId);
+      if (i >= 0) records[i] = { ...data, amount: Number(data.amount) };
+      render();
       hint.textContent = "✓ 记账成功！";
     }
 
     // 删除某一笔（按云端记录的 id）
     async function deleteRecord(id) {
       if (!confirm("确定删除这一笔吗？")) return;
+      const backup = records.slice();
+      records = records.filter((r) => r.id !== id); render();   // 立刻从界面移除
       const { error } = await sb.from("expenses").delete().eq("id", id);
-      if (error) { alert("删除出错：" + error.message); return; }
-      await refresh();
+      if (error) { records = backup; render(); alert("删除失败：" + error.message); }
     }
 
     // 保存本月预算
@@ -344,10 +355,9 @@
       const input = document.getElementById("budgetInput");
       if (!isValidAmount(input.value)) { alert("请填一个大于 0 的预算金额。"); return; }
       const value = parseFloat(input.value);
+      budget = value; renderBudget();   // 立刻更新界面
       const { error } = await sb.from("settings").upsert({ user_id: currentUser.id, monthly_budget: value });
-      if (error) { alert("保存预算出错：" + error.message); return; }
-      budget = value;
-      renderBudget();
+      if (error) { alert("保存预算失败：" + error.message); }
     }
 
     // ===== 画界面 =====
