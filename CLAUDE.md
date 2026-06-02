@@ -16,7 +16,8 @@
 ## 怎么运行这个项目
 - **线上版 A（GitHub Pages）**：https://yjn101454-ux.github.io/jizhang/ 　← 每次 push 自动更新。
 - **线上版 B（Vercel）**：https://jizhang-livid.vercel.app 　← 已连 GitHub，每次 push 自动更新。
-- **网页版（本地日常用）**：双击项目文件夹里的 `index.html`，浏览器就打开了，不用装任何东西。
+- 现在网页版需 **Google 登录**，数据存云端（Supabase），手机和电脑**自动同步**。
+- **本地打开 `index.html`**：主要用于开发预览；它和线上版同款代码、也需要登录，但用 `file://` 方式登录会失败，日常请用上面的线上版。
 - **跑测试**：在项目文件夹打开终端，运行 `node --test`。全绿就说明逻辑没被改坏。
 - **终端版（已封存，不再使用）**：在项目文件夹打开终端，运行 `python jizhang.py`。
 
@@ -26,6 +27,7 @@ GitHub 仓库：https://github.com/yjn101454-ux/jizhang （公开）。每次 pu
 - 本机已安装：`gh`（GitHub CLI）、`vercel`（Vercel CLI）、Node.js、Python。
 - 仓库已连两处自动部署：**GitHub Pages**（main 分支 / 根目录）和 **Vercel**（项目 `jizhang`，团队「yjn101454-9383's projects」，已接 GitHub）。一次 `git push` → CI 测试 + 两个线上版都自动更新。
 - `.vercelignore` 负责部署到 Vercel 时排除私人数据（`data.json`）；`.vercel/` 是本地链接配置，已被 git 忽略。
+- **数据库 & 登录**：Supabase 项目 `jizhang`（id `spavepwzzxcslbcxgdbv`，区域 ap-south-1）。Google 登录已配好（Google Cloud OAuth + Supabase Google Provider + URL 白名单含两个线上网址与 `localhost:8000`）。改表/查数据可用 Supabase MCP。
 
 ## 文件清单
 | 文件 | 作用 |
@@ -41,11 +43,11 @@ GitHub 仓库：https://github.com/yjn101454-ux/jizhang （公开）。每次 pu
 | `CLAUDE.md` | 就是本文件，项目说明。 |
 
 ## 数据长什么样（网页版）
-数据存在浏览器的 localStorage 里。每一笔消费是一个对象，字段固定：
-- `amount`：金额（数字，大于 0）
-- `category`：分类（如 餐饮/交通/购物）
-- `note`：备注（可为空字符串）
-- `time`：记录时间，格式 `YYYY-MM-DD HH:MM`（程序自动生成）
+数据存在 **Supabase 云数据库**（不再是浏览器 localStorage），用 **Google 登录**，每人只能看自己的数据（行级权限 RLS）。两张表：
+- `expenses`：每一笔消费。字段 `amount`（金额>0）/ `category`（分类）/ `note`（备注，可空）/ `time`（`YYYY-MM-DD HH:MM`，程序生成）/ `user_id`（自动＝登录用户）。
+- `settings`：每个用户的 `monthly_budget`（本月预算）。
+
+公开的项目网址和 publishable key 直接写在 `index.html` 里（设计上可公开，安全靠 RLS）；`service_role` 密钥和数据库密码绝不入库、不写进前端。
 
 ## 当前进度
 **终端版**（最早的版本）：`jizhang.py` + `data.json`，能记账 / 列出 / 算总和。现在留作纪念，不再使用，主力是网页版。
@@ -54,10 +56,10 @@ GitHub 仓库：https://github.com/yjn101454-ux/jizhang （公开）。每次 pu
 - 记一笔（金额、分类、备注）、列出所有消费、显示总额和分类汇总
 - 输入校验（金额必须是大于 0 的数字）
 - 删除某一笔（带二次确认）
-- 数据存在浏览器里（localStorage），刷新页面不丢
 - 导出 / 导入备份（json 文件）
+- **云端同步**：数据存 Supabase，Google 登录，手机/电脑共用同一份账
 
-注意：网页版和终端版数据各存各的、互不相通。日常只用网页版。
+注意：终端版数据是独立的旧文件，日常只用网页版（云端）。
 git 已经初始化，我们一路在提交。
 
 **已完成 第 1 步（预算 + 超支提醒）**：能设本月预算，显示已花/剩余/百分比+进度条，三档颜色提醒（<80% 绿 / 80-100% 橙 / ≥100% 红）。
@@ -67,16 +69,14 @@ git 已经初始化，我们一路在提交。
 **已完成 第 3a 步（上线 + CI）**：代码已推到 GitHub（公开仓库），用 GitHub Pages 上线（网址见上），用 GitHub Actions 配好 CI（每次 push 自动跑测试）。
 - 注意：这一步**还没做跨设备数据同步**。数据仍存在各自浏览器的 localStorage 里，手机和电脑各记各的、不互通。
 
-**马上要做**：第 3b 步（换真正的数据库，做到换设备不丢数据 / 多设备同步）。届时再选「现成云数据库服务」还是「自己写后端+SQLite」。之后是第 4 步（AI 功能）。
+**已完成 第 3b 步（多设备数据同步）**：用 Supabase 云数据库 + Google 登录，数据存云端、按用户隔离（RLS），手机和电脑共用同一份账。已在真实浏览器端到端验证：登录态与数据刷新后都不丢。
+- 踩过的坑（别再犯）：不要在 `onAuthStateChange` 回调里直接 `await` 调用 supabase 数据接口，会和它的内部锁死锁导致刷新后白屏——要用 `setTimeout(…, 0)` 把数据库调用挪出回调。
+
+**马上要做**：第 4 步（AI 功能）。
 
 ## 接下来要做的（按顺序进行，一次只做一步）
 
-（第 1、2、3a 步已完成，详见上面「当前进度」。）
-
-### 第 3b 步（下一步）：换真正的数据库 —— 多设备数据同步
-- 目标：换设备 / 换浏览器不丢数据，手机和电脑共用同一份账。
-- 到时再选「现成云数据库服务」还是「自己写后端 + SQLite」，先讲清取舍再让我定。
-- Vercel 能跑后端，这一步它会派上用场。
+（第 1、2、3a、3b 步已完成，详见上面「当前进度」。）
 
 ### 第 4 步：加 AI 功能（我懂 AI，这部分我最期待）
 - 自然语言记账：我打一句「今天星巴克 38」，AI 自动识别出金额和分类
