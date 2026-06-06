@@ -97,24 +97,15 @@
     /* 让原生日期选择控件在深色背景下也清晰 */
     input[type="date"] { color-scheme: dark; font-family: "JetBrains Mono", monospace; }
 
-    /* 本月消费构成：环形图 + 图例 */
-    .donut-wrap { display: flex; flex-direction: column; align-items: center; margin-top: 16px; }
-    .donut-chart { position: relative; width: 168px; height: 168px; }
-    .donut {
-      width: 168px; height: 168px; border-radius: 50%;
-      -webkit-mask: radial-gradient(circle, transparent 54px, #000 55px);
-              mask: radial-gradient(circle, transparent 54px, #000 55px);
-      transition: background .4s ease;
-    }
-    .donut-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
-    .donut-total { font-family: "JetBrains Mono", monospace; font-size: 28px; font-weight: 700; color: var(--text); }
-    .donut-unit { font-size: 11px; color: var(--muted); letter-spacing: 1px; }
-    .donut-top { margin-top: 14px; font-size: 14px; color: var(--muted); }
-    .legend { margin-top: 16px; display: flex; flex-direction: column; gap: 9px; }
-    .lg-row { display: flex; align-items: center; gap: 9px; font-size: 14px; }
-    .lg-dot { width: 11px; height: 11px; border-radius: 3px; flex: none; }
-    .lg-name { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .lg-val { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    /* 数据图表 */
+    .chart-block { margin-top: 22px; }
+    .chart-block:first-child { margin-top: 8px; }
+    .chart-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+    .pace-text { font-size: 13px; color: var(--muted); margin-top: 6px; text-align: center; line-height: 1.6; }
+    .pace-text b { color: var(--text); font-weight: 700; }
+    /* ApexCharts 在深色卡片上的微调 */
+    .apexcharts-tooltip { font-family: "JetBrains Mono", monospace !important; }
+    .apexcharts-legend-text { color: var(--muted) !important; }
 
     .fields { margin-top: 14px; }
     .field { margin-bottom: 12px; }
@@ -237,10 +228,29 @@
       </div>
     </section>
 
-    <!-- 本周期消费构成（环形图） -->
+    <!-- 数据图表（ApexCharts 画） -->
     <section class="card" style="--i:2">
-      <span class="label">本周期消费构成</span>
-      <div id="catChart"></div>
+      <span class="label">📊 数据图表</span>
+      <div id="chartsBody">
+        <div class="chart-block">
+          <div class="chart-title">花钱节奏</div>
+          <div id="chartPace"></div>
+          <div class="pace-text" id="paceText"></div>
+        </div>
+        <div class="chart-block">
+          <div class="chart-title">本周期消费构成</div>
+          <div id="chartCat"></div>
+        </div>
+        <div class="chart-block">
+          <div class="chart-title">每日消费</div>
+          <div id="chartDaily"></div>
+        </div>
+        <div class="chart-block">
+          <div class="chart-title">周期对比（花费 vs 预算）</div>
+          <div id="chartCompare"></div>
+        </div>
+      </div>
+      <div id="chartsEmpty" class="budget-empty" style="display:none">开启资金周期后，这里会显示各种图表 📈</div>
     </section>
 
     <!-- 累计总额 -->
@@ -297,6 +307,8 @@
 
   <!-- Supabase 官方库（云端数据库 + 登录） -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- ApexCharts：画各种图表的库（环形/柱状/仪表盘），从 CDN 引入、无需安装 -->
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.54.1"></script>
   <!-- 核心计算逻辑（纯算钱，和测试共用） -->
   <script src="logic.js"></script>
   <script>
@@ -323,13 +335,7 @@
     function currentMonth() { return monthKey(new Date()); }
     function today() { return formatDateTime(new Date()).slice(0, 10); }   // "YYYY-MM-DD"
     function firstOfMonth() { return today().slice(0, 7) + "-01"; }        // 本月 1 号
-    // 把某个日期往后挪 n 天（n 为负就是往前），返回 "YYYY-MM-DD"
-    function addDays(dateStr, n) {
-      const d = new Date(dateStr + "T00:00:00");
-      d.setDate(d.getDate() + n);
-      const p = (x) => String(x).padStart(2, "0");
-      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-    }
+    // addDays（前后挪天）已移到 logic.js，这里直接用全局函数
     // 当前进行中的周期（没有就返回 null）
     function currentCycle() { return openCycle(cycles); }
 
@@ -664,61 +670,145 @@
         <div class="cycle-range">本周期：从 <b>${prettyDate(cur.start_date)}</b> 开始（进行中）</div>`;
     }
 
-    // 本月消费构成：环形图 + 图例（纯 CSS，用 conic-gradient 画）
+    // ===== 数据图表（用 ApexCharts 画）=====
     const CAT_COLORS = ["#b6ff3a", "#38bdf8", "#ffc24b", "#ff5d73", "#a78bfa", "#34d399", "#f472b6", "#60a5fa"];
-    function renderCategoryChart() {
-      const box = document.getElementById("catChart");
+    const C_MUTED = "#8b95a4", C_TEXT = "#eef2f7", C_GRID = "rgba(255,255,255,0.08)";
+    const _charts = {};   // 存住已创建的图表实例，方便重画时先销毁
+
+    // 图表通用底子（深色、透明背景、统一字体）
+    function baseChart(type, height) {
+      return {
+        chart: { type, height, background: "transparent", fontFamily: '"JetBrains Mono", monospace',
+                 toolbar: { show: false }, animations: { speed: 450 } },
+        theme: { mode: "dark" },
+        grid: { borderColor: C_GRID },
+        tooltip: { theme: "dark" },
+        dataLabels: { enabled: false },
+      };
+    }
+    // 销毁某张图（重画前调用，避免重叠/内存泄漏）
+    function killChart(key) { if (_charts[key]) { _charts[key].destroy(); _charts[key] = null; } }
+    // 在某个容器里画一张图（先清空、销毁旧的）
+    function drawChart(key, elId, options) {
+      const el = document.getElementById(elId);
+      killChart(key);
+      el.innerHTML = "";
+      _charts[key] = new ApexCharts(el, options);
+      _charts[key].render();
+    }
+
+    function renderCharts() {
       const cur = currentCycle();
+      const body = document.getElementById("chartsBody");
+      const empty = document.getElementById("chartsEmpty");
+
+      // 没有进行中的周期：藏起图表区，给个提示
       if (!cur) {
-        box.innerHTML = '<div class="budget-empty">开启资金周期后，这里会显示本周期的消费构成</div>';
+        body.style.display = "none";
+        empty.style.display = "";
+        ["pace", "cat", "daily", "compare"].forEach(killChart);
         return;
       }
+      body.style.display = "";
+      empty.style.display = "none";
+
+      const end = cur.end_date || today();
       const cycleRecords = records.filter((r) => inCycle(r, cur));
-      const cats = sumByCategory(cycleRecords);  // 已按金额从高到低排好
-      const total = cats.reduce((s, c) => s + c[1], 0);
+      const spent = sumByCycle(records, cur);
+      const { pct, remain, state } = budgetStatus(spent, cur.budget);
+      const stateColor = state === "over" ? "#ff5d73" : state === "warn" ? "#ffc24b" : "#b6ff3a";
 
-      if (cats.length === 0 || total <= 0) {
-        box.innerHTML = '<div class="budget-empty">本周期还没有消费记录</div>';
-        return;
+      // ① 花钱节奏（仪表盘 + 一句话）
+      const daysElapsed = Math.max(1, daysBetween(cur.start_date, today()) + 1);
+      const p = pacing(spent, cur.budget, daysElapsed);
+      drawChart("pace", "chartPace", {
+        ...baseChart("radialBar", 240),
+        series: [Math.min(Math.round(pct), 100)],
+        labels: ["预算已用"],
+        colors: [stateColor],
+        stroke: { lineCap: "round" },
+        plotOptions: { radialBar: {
+          hollow: { size: "60%" },
+          track: { background: "rgba(255,255,255,0.08)" },
+          dataLabels: {
+            name: { color: C_MUTED, fontSize: "13px", offsetY: 22 },
+            value: { color: stateColor, fontSize: "30px", fontWeight: 700, offsetY: -18, formatter: (v) => v + "%" },
+          },
+        }},
+      });
+      let paceMsg;
+      if (p.dailyAvg <= 0) {
+        paceMsg = "本周期还没消费，加油保持～";
+      } else if (remain < 0) {
+        paceMsg = `日均 <b>¥${p.dailyAvg.toFixed(0)}</b>（已 ${daysElapsed} 天）· 🚨 已超支 <b>¥${Math.abs(remain).toFixed(0)}</b>`;
+      } else {
+        const d = p.daysLeftAtRate;
+        const dTxt = isFinite(d) ? `约 <b>${Math.floor(d)}</b> 天` : "很久";
+        paceMsg = `日均 <b>¥${p.dailyAvg.toFixed(0)}</b>（已 ${daysElapsed} 天）· 照这花法，剩下预算还能撑${dTxt}`;
+      }
+      document.getElementById("paceText").innerHTML = paceMsg;
+
+      // ② 本周期消费构成（环形图）
+      const cats = sumByCategory(cycleRecords);
+      if (cats.length === 0) {
+        killChart("cat");
+        document.getElementById("chartCat").innerHTML = '<div class="budget-empty">本周期还没有消费记录</div>';
+      } else {
+        drawChart("cat", "chartCat", {
+          ...baseChart("donut", 300),
+          series: cats.map((c) => Number(c[1].toFixed(2))),
+          labels: cats.map((c) => c[0]),
+          colors: CAT_COLORS,
+          legend: { position: "bottom", labels: { colors: C_MUTED } },
+          dataLabels: { enabled: true, formatter: (v) => v.toFixed(0) + "%", style: { fontSize: "11px" } },
+          plotOptions: { pie: { donut: { size: "66%", labels: {
+            show: true,
+            value: { color: C_TEXT, fontSize: "22px", fontWeight: 700, formatter: (v) => "¥" + Number(v).toFixed(0) },
+            total: { show: true, label: "本周期", color: C_MUTED, formatter: () => "¥" + spent.toFixed(0) },
+          }}}},
+          tooltip: { y: { formatter: (v) => "¥" + v.toFixed(2) } },
+          stroke: { colors: ["#0e1116"] },
+        });
       }
 
-      const items = cats.map((c, i) => ({
-        name: c[0], amt: c[1], pct: (c[1] / total) * 100, color: CAT_COLORS[i % CAT_COLORS.length],
-      }));
+      // ③ 每日消费（柱状图）
+      const daily = dailyTotals(cycleRecords, cur.start_date, end);
+      drawChart("daily", "chartDaily", {
+        ...baseChart("bar", 240),
+        series: [{ name: "当日消费", data: daily.map((d) => Number(d.amount.toFixed(2))) }],
+        xaxis: { categories: daily.map((d) => d.date.slice(5)),
+                 labels: { style: { colors: C_MUTED, fontSize: "10px" }, rotate: -45, rotateAlways: daily.length > 12, hideOverlappingLabels: true },
+                 axisBorder: { show: false }, axisTicks: { show: false } },
+        yaxis: { labels: { style: { colors: C_MUTED }, formatter: (v) => v.toFixed(0) } },
+        colors: ["#b6ff3a"],
+        plotOptions: { bar: { borderRadius: 4, columnWidth: "62%" } },
+        fill: { type: "gradient", gradient: { shade: "dark", type: "vertical", gradientToColors: ["#5fae00"], stops: [0, 100], opacityFrom: 0.95, opacityTo: 0.65 } },
+        tooltip: { y: { formatter: (v) => "¥" + v.toFixed(2) } },
+      });
 
-      // 拼出 conic-gradient 的分段
-      let acc = 0;
-      const segs = items.map((it) => {
-        const start = acc; acc += it.pct;
-        return `${it.color} ${start.toFixed(2)}% ${acc.toFixed(2)}%`;
-      }).join(", ");
-
-      const top = items[0];
-      const legend = items.map((it) =>
-        `<div class="lg-row">` +
-          `<span class="lg-dot" style="background:${it.color}"></span>` +
-          `<span class="lg-name">${escapeHtml(it.name)}</span>` +
-          `<span class="lg-val">${it.amt.toFixed(2)} 元 · ${it.pct.toFixed(0)}%</span>` +
-        `</div>`
-      ).join("");
-
-      box.innerHTML =
-        '<div class="donut-wrap">' +
-          '<div class="donut-chart">' +
-            `<div class="donut" style="background: conic-gradient(${segs});"></div>` +
-            '<div class="donut-center">' +
-              `<span class="donut-total">${total.toFixed(0)}</span>` +
-              '<span class="donut-unit">元 · 本周期</span>' +
-            '</div>' +
-          '</div>' +
-          `<div class="donut-top">最大头：<b style="color:${top.color}">${escapeHtml(top.name)}</b> 占 ${top.pct.toFixed(0)}%</div>` +
-        '</div>' +
-        `<div class="legend">${legend}</div>`;
+      // ④ 周期对比（花费 vs 预算，最近 6 期）
+      const sorted = cycles.slice().sort((a, b) => (a.start_date < b.start_date ? -1 : 1));
+      const recent = sorted.slice(-6);
+      drawChart("compare", "chartCompare", {
+        ...baseChart("bar", 260),
+        series: [
+          { name: "花费", data: recent.map((c) => Number(sumByCycle(records, c).toFixed(2))) },
+          { name: "预算", data: recent.map((c) => Number(Number(c.budget).toFixed(2))) },
+        ],
+        xaxis: { categories: recent.map((c) => (c.end_date ? prettyDate(c.start_date) : "本期")),
+                 labels: { style: { colors: C_MUTED, fontSize: "11px" } },
+                 axisBorder: { show: false }, axisTicks: { show: false } },
+        yaxis: { labels: { style: { colors: C_MUTED }, formatter: (v) => v.toFixed(0) } },
+        colors: ["#b6ff3a", "#3a4150"],
+        plotOptions: { bar: { borderRadius: 4, columnWidth: "58%" } },
+        legend: { position: "top", labels: { colors: C_MUTED } },
+        tooltip: { y: { formatter: (v) => "¥" + v.toFixed(2) } },
+      });
     }
 
     function render() {
       renderBudget();
-      renderCategoryChart(); // 本周期消费构成图随记账/删除实时更新
+      renderCharts(); // 各种图表随记账/删除实时更新
       // 记一笔的日期框：没填时默认今天
       const rd = document.getElementById("recordDate");
       if (rd && !rd.value) rd.value = today();

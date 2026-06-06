@@ -8,6 +8,7 @@ const {
   formatDateTime, monthKey, isValidAmount,
   sumByMonth, sumAll, sumByCategory, budgetStatus,
   dateOf, inCycle, openCycle, sumByCycle,
+  addDays, daysBetween, dailyTotals, pacing,
 } = require("./logic.js");
 
 // 金额是小数，相加可能有微小的浮点误差，所以用「足够接近」来判断
@@ -127,4 +128,41 @@ test("sumByCycle：只统计落在本周期里的金额", () => {
   const may = { start_date: "2026-05-01", end_date: "2026-05-31" };
   close(sumByCycle(sample, may), 9.9);
   close(sumByCycle(sample, null), 0);      // 没有周期 → 0
+});
+
+test("addDays：日期前后挪天", () => {
+  assert.strictEqual(addDays("2026-06-01", 1), "2026-06-02");
+  assert.strictEqual(addDays("2026-06-01", -1), "2026-05-31"); // 跨月
+  assert.strictEqual(addDays("2026-12-31", 1), "2027-01-01");  // 跨年
+});
+
+test("daysBetween：算两个日期相差几天", () => {
+  assert.strictEqual(daysBetween("2026-06-01", "2026-06-03"), 2);
+  assert.strictEqual(daysBetween("2026-06-01", "2026-06-01"), 0);
+  assert.strictEqual(daysBetween("2026-05-31", "2026-06-01"), 1); // 跨月
+});
+
+test("dailyTotals：逐天求和、没消费的天补 0", () => {
+  const recs = [
+    { amount: 10, time: "2026-06-01 09:00" },
+    { amount: 5,  time: "2026-06-01 20:00" },
+    { amount: 8,  time: "2026-06-03 12:00" },
+  ];
+  const out = dailyTotals(recs, "2026-06-01", "2026-06-03");
+  assert.strictEqual(out.length, 3);            // 1、2、3 三天都在
+  assert.strictEqual(out[0].date, "2026-06-01"); close(out[0].amount, 15); // 同一天两笔合并
+  assert.strictEqual(out[1].date, "2026-06-02"); close(out[1].amount, 0);  // 没消费补 0
+  assert.strictEqual(out[2].date, "2026-06-03"); close(out[2].amount, 8);
+});
+
+test("pacing：日均与「还能撑几天」", () => {
+  // 已花 300，预算 1000，已过 3 天 → 日均 100，剩 700，还能撑 7 天
+  const p = pacing(300, 1000, 3);
+  close(p.dailyAvg, 100);
+  close(p.remain, 700);
+  close(p.daysLeftAtRate, 7);
+  // 还没消费：日均 0，能撑「无限久」
+  const p2 = pacing(0, 1000, 5);
+  assert.strictEqual(p2.dailyAvg, 0);
+  assert.strictEqual(p2.daysLeftAtRate, Infinity);
 });

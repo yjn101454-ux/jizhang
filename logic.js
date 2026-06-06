@@ -74,6 +74,48 @@ function sumByCycle(records, cycle) {
     .reduce((sum, r) => sum + r.amount, 0);
 }
 
+// 把某个日期往后挪 n 天（n 为负就是往前），返回 "YYYY-MM-DD"
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + n);
+  const p = (x) => String(x).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// 两个日期相差多少天（b - a）。例：("2026-06-01","2026-06-03") = 2
+function daysBetween(a, b) {
+  const ms = new Date(b + "T00:00:00") - new Date(a + "T00:00:00");
+  return Math.round(ms / 86400000);
+}
+
+// 每日合计：从 startStr 到 endStr（含两端）逐天求和，没消费的天补 0。
+// 返回 [{ date:"YYYY-MM-DD", amount }, ...]（用于「每日消费」柱状图）
+function dailyTotals(records, startStr, endStr) {
+  const map = {};
+  for (const r of records) {
+    const d = typeof r.time === "string" ? r.time.slice(0, 10) : "";
+    if (d >= startStr && d <= endStr) map[d] = (map[d] || 0) + r.amount;
+  }
+  const out = [];
+  const n = daysBetween(startStr, endStr);
+  for (let i = 0; i <= n; i++) {
+    const day = addDays(startStr, i);
+    out.push({ date: day, amount: map[day] || 0 });
+  }
+  return out;
+}
+
+// 花钱节奏：传入已花、预算、已过天数，算出日均、剩余、按当前速度还能撑几天。
+//   dailyAvg        日均消费
+//   remain          剩余预算（负数=已超支）
+//   daysLeftAtRate  照当前日均，剩余预算还能撑几天（没消费时为 Infinity）
+function pacing(spent, budget, daysElapsed) {
+  const dailyAvg = daysElapsed > 0 ? spent / daysElapsed : 0;
+  const remain = budget - spent;
+  const daysLeftAtRate = dailyAvg > 0 ? remain / dailyAvg : Infinity;
+  return { dailyAvg, remain, daysLeftAtRate };
+}
+
 // 预算状态：传入「已花」和「预算」，返回 { pct, remain, state }
 //   pct    用掉的百分比
 //   remain 还剩多少（负数表示超支）
@@ -96,5 +138,6 @@ if (typeof module !== "undefined" && module.exports) {
     formatDateTime, monthKey, isValidAmount,
     sumByMonth, sumAll, sumByCategory, budgetStatus,
     dateOf, inCycle, openCycle, sumByCycle,
+    addDays, daysBetween, dailyTotals, pacing,
   };
 }
