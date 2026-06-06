@@ -469,7 +469,7 @@
       records.push({ ...rec, id: tempId });
       render();
       amountEl.value = ""; categoryEl.value = ""; noteEl.value = "";
-      if (dateEl) dateEl.value = today();   // 日期复位到今天
+      // 注意：故意不把日期跳回今天，保留你刚选的日期，方便连着补记同一天的多笔账
       amountEl.focus();
       hint.textContent = "保存中…";
 
