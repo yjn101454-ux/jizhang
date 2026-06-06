@@ -208,6 +208,7 @@
       <div class="card-head">
         <span class="label" style="margin:0">💰 本周期</span>
         <div class="cycle-actions">
+          <button id="addBudgetBtn" class="cycle-btn ghost" style="display:none">＋ 加钱</button>
           <button id="endCycleBtn" class="cycle-btn ghost" style="display:none">结束本周期</button>
           <button id="newCycleBtn" class="cycle-btn">＋ 开启新周期</button>
         </div>
@@ -553,6 +554,22 @@
       await refresh();
     }
 
+    // 给本周期预算加钱（比如父母转的奖励到账）。填多少就加多少，自动算新总额。
+    async function addToBudget() {
+      const cur = currentCycle();
+      if (!cur) return;
+      const input = prompt(`这次到账多少钱？会加到本期预算上。\n（当前预算 ${cur.budget.toFixed(2)} 元）`, "");
+      if (input === null) return;                 // 点了取消
+      if (!isValidAmount(input)) { alert("请填一个大于 0 的金额。"); return; }
+      const old = cur.budget;
+      const next = old + parseFloat(input);
+      cur.budget = next; render();                // 乐观更新
+      const { error } = await sb.from("cycles").update({ budget: next }).eq("id", cur.id);
+      if (error) { cur.budget = old; render(); alert("加钱失败：" + error.message); return; }
+      // 顺便更新 settings 的默认建议预算
+      sb.from("settings").upsert({ user_id: currentUser.id, monthly_budget: next });
+    }
+
     // 结束当前周期（不立刻开新的）
     async function endCurrentCycle() {
       const cur = currentCycle();
@@ -575,11 +592,13 @@
     function renderBudget() {
       const body = document.getElementById("budgetBody");
       const endBtn = document.getElementById("endCycleBtn");
+      const addBtn = document.getElementById("addBudgetBtn");
       const cur = currentCycle();
 
       // 没有进行中的周期：显示提示（若有上一个已结束的周期，给个小结）
       if (!cur) {
         endBtn.style.display = "none";
+        addBtn.style.display = "none";
         const closed = cycles.filter((c) => c.end_date);
         if (closed.length > 0) {
           const last = closed.reduce((a, b) => (a.start_date >= b.start_date ? a : b));
@@ -600,6 +619,7 @@
 
       // 有进行中的周期：算本周期已花、剩余、进度
       endBtn.style.display = "";
+      addBtn.style.display = "";
       const spent = sumByCycle(records, cur);
       const { pct, remain, state } = budgetStatus(spent, cur.budget);
       const barWidth = Math.min(pct, 100);
@@ -751,6 +771,7 @@
     document.getElementById("aiInput").addEventListener("keydown", (e) => { if (e.key === "Enter") aiParse(); });
     document.getElementById("newCycleBtn").addEventListener("click", toggleNewCycleForm);
     document.getElementById("endCycleBtn").addEventListener("click", endCurrentCycle);
+    document.getElementById("addBudgetBtn").addEventListener("click", addToBudget);
     document.getElementById("confirmNewCycleBtn").addEventListener("click", confirmNewCycle);
     document.getElementById("cycleBudgetInput").addEventListener("keydown", (e) => { if (e.key === "Enter") confirmNewCycle(); });
     document.getElementById("note").addEventListener("keydown", (e) => { if (e.key === "Enter") addRecord(); });
