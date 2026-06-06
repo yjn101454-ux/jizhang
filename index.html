@@ -151,6 +151,12 @@
     .item .del:hover { color: var(--over); background: rgba(255, 93, 115, 0.1); }
     .item .editdate { background: transparent; color: var(--muted); font-size: 13px; padding: 6px 8px; border-radius: 8px; }
     .item .editdate:hover { color: var(--neon); background: rgba(182, 255, 58, 0.1); }
+    /* 消费明细：按日期分组 + 列表太长时可滚动 */
+    #list { max-height: 460px; overflow-y: auto; }
+    .day-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin: 18px 0 2px; }
+    .day-group:first-child .day-head { margin-top: 2px; }
+    .day-head .day-date { font-size: 12px; letter-spacing: 1px; color: var(--muted); font-family: "JetBrains Mono", monospace; }
+    .day-head .day-total { font-size: 13px; font-weight: 700; color: var(--neon); font-variant-numeric: tabular-nums; }
     .empty { color: var(--muted); text-align: center; padding: 24px 0; }
 
     .tools { display: flex; gap: 12px; }
@@ -588,6 +594,13 @@
       if (!s || s.length < 10) return s || "";
       return `${Number(s.slice(5, 7))}月${Number(s.slice(8, 10))}日`;
     }
+    // 把 "2026-05-28" 显示成 "2026-05-28 周四"（明细分组标题用）
+    function prettyFullDate(s) {
+      if (!s || s.length < 10) return s || "";
+      const wd = ["日", "一", "二", "三", "四", "五", "六"];
+      const dt = new Date(s + "T00:00:00");
+      return isNaN(dt.getTime()) ? s : `${s} 周${wd[dt.getDay()]}`;
+    }
 
     function renderBudget() {
       const body = document.getElementById("budgetBody");
@@ -710,20 +723,38 @@
         listEl.innerHTML = '<div class="empty">还没有任何消费记录</div>';
         return;
       }
-      listEl.innerHTML = records.map((r) => {
-        const note = r.note ? escapeHtml(r.note) : "（无备注）";
+      // 按日期把同一天的归到一组（新日期在前；同一天里新记的在前）
+      const groups = {};
+      for (const r of records) {
+        const d = dateOf(r);
+        (groups[d] = groups[d] || []).push(r);
+      }
+      const dates = Object.keys(groups).sort().reverse();
+      listEl.innerHTML = dates.map((d) => {
+        const dayRecords = groups[d].slice().reverse();
+        const dayTotal = dayRecords.reduce((s, r) => s + r.amount, 0);
+        const rows = dayRecords.map((r) => {
+          const note = r.note ? escapeHtml(r.note) : "（无备注）";
+          return `
+            <div class="item">
+              <div class="left">
+                <span class="cat">${escapeHtml(r.category)}</span>
+                <span class="note">${note}</span>
+              </div>
+              <span class="amount">${r.amount.toFixed(2)} 元</span>
+              <button class="editdate" data-id="${r.id}">改日期</button>
+              <button class="del" data-id="${r.id}">删除</button>
+            </div>`;
+        }).join("");
         return `
-          <div class="item">
-            <div class="left">
-              <span class="cat">${escapeHtml(r.category)}</span>
-              <span class="note">${note}</span>
-              <span class="time">${r.time}</span>
+          <div class="day-group">
+            <div class="day-head">
+              <span class="day-date">${prettyFullDate(d)}</span>
+              <span class="day-total">共 ${dayTotal.toFixed(2)} 元</span>
             </div>
-            <span class="amount">${r.amount.toFixed(2)} 元</span>
-            <button class="editdate" data-id="${r.id}">改日期</button>
-            <button class="del" data-id="${r.id}">删除</button>
+            ${rows}
           </div>`;
-      }).reverse().join("");
+      }).join("");
     }
 
     function escapeHtml(s) {
