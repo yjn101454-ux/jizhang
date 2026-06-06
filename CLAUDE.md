@@ -45,9 +45,10 @@ GitHub 仓库：https://github.com/yjn101454-ux/jizhang （公开）。每次 pu
 | `CLAUDE.md` | 就是本文件，项目说明。 |
 
 ## 数据长什么样（网页版）
-数据存在 **Supabase 云数据库**（不再是浏览器 localStorage），用 **Google 登录**，每人只能看自己的数据（行级权限 RLS）。两张表：
-- `expenses`：每一笔消费。字段 `amount`（金额>0）/ `category`（分类）/ `note`（备注，可空）/ `time`（`YYYY-MM-DD HH:MM`，程序生成）/ `user_id`（自动＝登录用户）。
-- `settings`：每个用户的 `monthly_budget`（本月预算）。
+数据存在 **Supabase 云数据库**（不再是浏览器 localStorage），用 **Google 登录**，每人只能看自己的数据（行级权限 RLS）。三张表：
+- `expenses`：每一笔消费。字段 `amount`（金额>0）/ `category`（分类）/ `note`（备注，可空）/ `time`（`YYYY-MM-DD HH:MM`，日期可由用户选、时分程序补）/ `user_id`（自动＝登录用户）。
+- `settings`：每个用户的 `monthly_budget`（现作为「开启新周期」时的默认建议预算）。
+- `cycles`：自定义资金周期。字段 `start_date`（开始日）/ `end_date`（结束日，空＝进行中）/ `budget`（本期预算>0）/ `user_id`。当前周期＝`end_date` 为空那条；一笔账按其日期落进对应周期（见 `logic.js` 的 `inCycle`/`openCycle`/`sumByCycle`）。
 
 公开的项目网址和 publishable key 直接写在 `index.html` 里（设计上可公开，安全靠 RLS）；`service_role` 密钥和数据库密码绝不入库、不写进前端。
 
@@ -60,8 +61,10 @@ GitHub 仓库：https://github.com/yjn101454-ux/jizhang （公开）。每次 pu
 - 删除某一笔（带二次确认）
 - 导出 / 导入备份（json 文件）
 - **云端同步**：数据存 Supabase，Google 登录，手机/电脑共用同一份账
-- **本月消费构成环形图**（纯 CSS，按分类占比、标出最大头，记账后实时更新）
+- **本周期消费构成环形图**（纯 CSS，按分类占比、标出最大头，记账后实时更新）
 - **AI 自然语言记账**（一句话自动识别金额/分类/备注，见第 4 步）
+- **自定义资金周期**（取代自然月）：手动「开启新周期」（自己定预算+开始日期）、「结束本周期」；预算/已花/剩余/环形图全按当前周期算
+- **记账日期可改**：记一笔时能选日期（默认今天，补记可改）；列表每笔有「改日期」修正旧账
 
 注意：终端版数据是独立的旧文件，日常只用网页版（云端）。
 git 已经初始化，我们一路在提交。
@@ -77,6 +80,8 @@ git 已经初始化，我们一路在提交。
 - 踩过的坑（别再犯）：不要在 `onAuthStateChange` 回调里直接 `await` 调用 supabase 数据接口，会和它的内部锁死锁导致刷新后白屏——要用 `setTimeout(…, 0)` 把数据库调用挪出回调。
 
 **进行中 第 4 步（AI 功能）**：✅ 功能 1「自然语言记账」已完成（DeepSeek 解析，后端 `api/parse.js`，已在真实浏览器端到端验证）；⬜ 功能 2「AI 周报」待做。
+
+**已完成 优化（自定义周期 + 记账日期可改）**：把「自然月」换成用户自定义的资金周期（新表 `cycles`，手动开/关，开新周期自动结束上一个）；记账可选日期、旧账可改日期。`logic.js` 新增 `dateOf/inCycle/openCycle/sumByCycle` 并补了测试（`node --test` 共 12 项全绿）。已用本地预览注入假数据验证三种状态（进行中/已结束/无周期）渲染正确。
 
 ## 接下来要做的（按顺序进行，一次只做一步）
 
