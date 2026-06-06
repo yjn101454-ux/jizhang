@@ -149,8 +149,8 @@
     .item .amount { font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 16px; white-space: nowrap; }
     .item .del { background: transparent; color: var(--muted); font-size: 13px; padding: 6px 8px; border-radius: 8px; }
     .item .del:hover { color: var(--over); background: rgba(255, 93, 115, 0.1); }
-    .item .editdate { background: transparent; color: var(--muted); font-size: 13px; padding: 6px 8px; border-radius: 8px; }
-    .item .editdate:hover { color: var(--neon); background: rgba(182, 255, 58, 0.1); }
+    .item .editdate, .item .editcat { background: transparent; color: var(--muted); font-size: 13px; padding: 6px 8px; border-radius: 8px; }
+    .item .editdate:hover, .item .editcat:hover { color: var(--neon); background: rgba(182, 255, 58, 0.1); }
     /* 消费明细：按日期分组 + 列表太长时可滚动 */
     #list { max-height: 460px; overflow-y: auto; }
     .day-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin: 18px 0 2px; }
@@ -519,6 +519,19 @@
       if (error) { rec.time = old; render(); alert("改日期失败：" + error.message); }
     }
 
+    // 改某一笔的分类（修正记错的分类）
+    async function editCategory(id) {
+      const rec = records.find((r) => r.id === id);
+      if (!rec) return;
+      const input = prompt("把这笔的分类改成（如 餐饮 / 交通 / 居住 …）：", rec.category || "");
+      if (input === null) return;                  // 点了取消
+      const v = input.trim() || "未分类";
+      const old = rec.category;
+      rec.category = v; render();                   // 乐观更新
+      const { error } = await sb.from("expenses").update({ category: v }).eq("id", id);
+      if (error) { rec.category = old; render(); alert("改分类失败：" + error.message); }
+    }
+
     // 展开/收起「开启新周期」表单
     function toggleNewCycleForm() {
       const f = document.getElementById("newCycleForm");
@@ -742,6 +755,7 @@
                 <span class="note">${note}</span>
               </div>
               <span class="amount">${r.amount.toFixed(2)} 元</span>
+              <button class="editcat" data-id="${r.id}">改分类</button>
               <button class="editdate" data-id="${r.id}">改日期</button>
               <button class="del" data-id="${r.id}">删除</button>
             </div>`;
@@ -815,6 +829,7 @@
     document.getElementById("list").addEventListener("click", (e) => {
       if (e.target.classList.contains("del")) deleteRecord(e.target.dataset.id);
       else if (e.target.classList.contains("editdate")) editDate(e.target.dataset.id);
+      else if (e.target.classList.contains("editcat")) editCategory(e.target.dataset.id);
     });
 
     // ===== 启动：检查登录状态 =====
