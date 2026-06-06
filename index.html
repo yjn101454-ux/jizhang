@@ -84,6 +84,19 @@
     .budget-msg.warn { color: var(--warn); }
     .budget-msg.over { color: var(--over); }
 
+    /* 资金周期 */
+    .cycle-actions { display: flex; gap: 8px; }
+    .cycle-btn { background: var(--neon); color: var(--neon-ink); font-weight: 700; padding: 8px 14px; border-radius: 12px; font-size: 13px; }
+    .cycle-btn.ghost { background: var(--surface); border: 1px solid var(--border); color: var(--muted); font-weight: 600; }
+    .cycle-btn.ghost:hover { border-color: var(--over); color: var(--over); }
+    .new-cycle-form { margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--border); }
+    .ncf-row { display: flex; gap: 12px; }
+    .ncf-row .field { flex: 1; }
+    .cycle-range { font-size: 13px; color: var(--muted); margin-top: 12px; }
+    .cycle-range b { color: var(--text); font-weight: 600; }
+    /* 让原生日期选择控件在深色背景下也清晰 */
+    input[type="date"] { color-scheme: dark; font-family: "JetBrains Mono", monospace; }
+
     /* 本月消费构成：环形图 + 图例 */
     .donut-wrap { display: flex; flex-direction: column; align-items: center; margin-top: 16px; }
     .donut-chart { position: relative; width: 168px; height: 168px; }
@@ -136,6 +149,8 @@
     .item .amount { font-family: "JetBrains Mono", monospace; font-weight: 700; font-size: 16px; white-space: nowrap; }
     .item .del { background: transparent; color: var(--muted); font-size: 13px; padding: 6px 8px; border-radius: 8px; }
     .item .del:hover { color: var(--over); background: rgba(255, 93, 115, 0.1); }
+    .item .editdate { background: transparent; color: var(--muted); font-size: 13px; padding: 6px 8px; border-radius: 8px; }
+    .item .editdate:hover { color: var(--neon); background: rgba(182, 255, 58, 0.1); }
     .empty { color: var(--muted); text-align: center; padding: 24px 0; }
 
     .tools { display: flex; gap: 12px; }
@@ -188,21 +203,36 @@
       <button class="logout" id="logoutBtn">退出登录</button>
     </div>
 
-    <!-- 本月预算 -->
+    <!-- 本周期预算 -->
     <section class="card" style="--i:1">
       <div class="card-head">
-        <span class="label" style="margin:0">📅 本月预算</span>
-        <div class="budget-set">
-          <input type="number" id="budgetInput" placeholder="设定金额" step="1" min="0">
-          <button id="saveBudgetBtn">保存</button>
+        <span class="label" style="margin:0">💰 本周期</span>
+        <div class="cycle-actions">
+          <button id="endCycleBtn" class="cycle-btn ghost" style="display:none">结束本周期</button>
+          <button id="newCycleBtn" class="cycle-btn">＋ 开启新周期</button>
         </div>
       </div>
       <div id="budgetBody"></div>
+      <!-- 开启新周期的表单：点「开启新周期」才展开 -->
+      <div id="newCycleForm" class="new-cycle-form" style="display:none">
+        <div class="ncf-row">
+          <div class="field">
+            <label>本期预算（元）</label>
+            <input type="number" id="cycleBudgetInput" placeholder="例如 1500" step="1" min="0">
+          </div>
+          <div class="field">
+            <label>开始日期</label>
+            <input type="date" id="cycleStartInput">
+          </div>
+        </div>
+        <button class="btn-primary" id="confirmNewCycleBtn">确认开启新周期</button>
+        <div class="hint" id="cycleHint">开启新周期会自动结束上一个；开始日期可往前选，把已经花的也圈进来。</div>
+      </div>
     </section>
 
-    <!-- 本月消费构成（环形图） -->
+    <!-- 本周期消费构成（环形图） -->
     <section class="card" style="--i:2">
-      <span class="label">本月消费构成</span>
+      <span class="label">本周期消费构成</span>
       <div id="catChart"></div>
     </section>
 
@@ -234,6 +264,10 @@
         <div class="field">
           <label>备注（可不填）</label>
           <input type="text" id="note" placeholder="例如 午饭">
+        </div>
+        <div class="field">
+          <label>日期（补记可改，默认今天）</label>
+          <input type="date" id="recordDate">
         </div>
       </div>
       <button class="btn-primary" id="addBtn">＋ 记一笔</button>
@@ -273,12 +307,24 @@
 
     // 内存里的数据（从云端读来）
     let records = [];
-    let budget = null;        // 本月预算（数字或 null）
+    let budget = null;        // 上次用过的预算（来自 settings，做新周期的默认建议值）
+    let cycles = [];          // 所有资金周期（每个有 start_date / end_date / budget）
     let currentUser = null;
 
     // 当前时间字符串（用 logic.js 的共用函数）
     function now() { return formatDateTime(new Date()); }
     function currentMonth() { return monthKey(new Date()); }
+    function today() { return formatDateTime(new Date()).slice(0, 10); }   // "YYYY-MM-DD"
+    function firstOfMonth() { return today().slice(0, 7) + "-01"; }        // 本月 1 号
+    // 把某个日期往后挪 n 天（n 为负就是往前），返回 "YYYY-MM-DD"
+    function addDays(dateStr, n) {
+      const d = new Date(dateStr + "T00:00:00");
+      d.setDate(d.getDate() + n);
+      const p = (x) => String(x).padStart(2, "0");
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    }
+    // 当前进行中的周期（没有就返回 null）
+    function currentCycle() { return openCycle(cycles); }
 
     // ===== 登录相关 =====
     function showLogin() {
@@ -315,7 +361,7 @@
 
     async function signOut() {
       await sb.auth.signOut();
-      records = []; budget = null;
+      records = []; budget = null; cycles = [];
     }
 
     // ===== 云端读写 =====
@@ -329,6 +375,13 @@
 
       const { data: s } = await sb.from("settings").select("monthly_budget").maybeSingle();
       budget = s && s.monthly_budget != null ? Number(s.monthly_budget) : null;
+
+      // 读所有资金周期（按开始日期从早到晚）
+      const { data: cyc } = await sb
+        .from("cycles")
+        .select("id, start_date, end_date, budget")
+        .order("start_date", { ascending: true });
+      cycles = (cyc || []).map((c) => ({ ...c, budget: Number(c.budget) }));
     }
 
     async function refresh() { await loadAll(); render(); }
@@ -401,17 +454,23 @@
       if (!isValidAmount(amountEl.value)) {
         hint.className = "hint error"; hint.textContent = "请填一个大于 0 的金额。"; return;
       }
+      // 日期：默认今天，可改成补记的那天；时分自动用当前时间补上
+      const dateEl = document.getElementById("recordDate");
+      const dateStr = (dateEl && dateEl.value) ? dateEl.value : today();
+      const timePart = now().slice(11);   // "HH:MM"
       const rec = {
         amount: parseFloat(amountEl.value),
         category: categoryEl.value.trim() || "未分类",
         note: noteEl.value.trim(),
-        time: now(),
+        time: dateStr + " " + timePart,
       };
       // 乐观更新：先在界面上立刻显示，再同步到云端
       const tempId = "temp-" + Date.now();
       records.push({ ...rec, id: tempId });
       render();
-      amountEl.value = ""; categoryEl.value = ""; noteEl.value = ""; amountEl.focus();
+      amountEl.value = ""; categoryEl.value = ""; noteEl.value = "";
+      if (dateEl) dateEl.value = today();   // 日期复位到今天
+      amountEl.focus();
       hint.textContent = "保存中…";
 
       const { data, error } = await sb.from("expenses").insert(rec).select().single();
@@ -434,53 +493,146 @@
       if (error) { records = backup; render(); alert("删除失败：" + error.message); }
     }
 
-    // 保存本月预算
-    async function setBudget() {
-      const input = document.getElementById("budgetInput");
-      if (!isValidAmount(input.value)) { alert("请填一个大于 0 的预算金额。"); return; }
-      const value = parseFloat(input.value);
-      budget = value; renderBudget();   // 立刻更新界面
-      const { error } = await sb.from("settings").upsert({ user_id: currentUser.id, monthly_budget: value });
-      if (error) { alert("保存预算失败：" + error.message); }
+    // 改某一笔的日期（旧账补正）。时分保持不变，只换日期。
+    async function editDate(id) {
+      const rec = records.find((r) => r.id === id);
+      if (!rec) return;
+      const cur = dateOf(rec);
+      const input = prompt("把这笔的日期改成（格式 2026-06-01）：", cur);
+      if (input === null) return;            // 点了取消
+      const v = input.trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v) || isNaN(new Date(v + "T00:00:00").getTime())) {
+        alert("日期格式不对，应该像 2026-06-01"); return;
+      }
+      const timePart = (typeof rec.time === "string" && rec.time.length >= 16) ? rec.time.slice(11) : "00:00";
+      const newTime = v + " " + timePart;
+      const old = rec.time;
+      rec.time = newTime; render();          // 乐观更新
+      const { error } = await sb.from("expenses").update({ time: newTime }).eq("id", id);
+      if (error) { rec.time = old; render(); alert("改日期失败：" + error.message); }
+    }
+
+    // 展开/收起「开启新周期」表单
+    function toggleNewCycleForm() {
+      const f = document.getElementById("newCycleForm");
+      if (f.style.display !== "none") { f.style.display = "none"; return; }
+      const bEl = document.getElementById("cycleBudgetInput");
+      const sEl = document.getElementById("cycleStartInput");
+      bEl.value = (budget != null && !isNaN(budget)) ? budget : "";   // 默认带上次的预算
+      // 第一次还没有任何周期时，开始日期默认本月 1 号（把这个月已花的圈进来）；否则默认今天
+      sEl.value = cycles.length === 0 ? firstOfMonth() : today();
+      document.getElementById("cycleHint").className = "hint";
+      f.style.display = "";
+      bEl.focus();
+    }
+
+    // 确认开启新周期：自动结束上一个，再插入新周期
+    async function confirmNewCycle() {
+      const bEl = document.getElementById("cycleBudgetInput");
+      const sEl = document.getElementById("cycleStartInput");
+      const hint = document.getElementById("cycleHint");
+      hint.className = "hint";
+      if (!isValidAmount(bEl.value)) { hint.className = "hint error"; hint.textContent = "请填一个大于 0 的预算金额。"; return; }
+      const budgetVal = parseFloat(bEl.value);
+      const startDate = sEl.value || today();
+      hint.textContent = "处理中…";
+
+      // 自动结束上一个还开着的周期：结束日 = 新周期开始的前一天（但不早于它自己的开始日）
+      const cur = currentCycle();
+      if (cur) {
+        let end = addDays(startDate, -1);
+        if (end < cur.start_date) end = cur.start_date;
+        const { error: e1 } = await sb.from("cycles").update({ end_date: end }).eq("id", cur.id);
+        if (e1) { hint.className = "hint error"; hint.textContent = "结束上一个周期失败：" + e1.message; return; }
+      }
+      const { error } = await sb.from("cycles").insert({ start_date: startDate, budget: budgetVal });
+      if (error) { hint.className = "hint error"; hint.textContent = "开启失败：" + error.message; return; }
+      // 顺便把预算记到 settings，作为下次开周期的默认建议值
+      await sb.from("settings").upsert({ user_id: currentUser.id, monthly_budget: budgetVal });
+      document.getElementById("newCycleForm").style.display = "none";
+      await refresh();
+    }
+
+    // 结束当前周期（不立刻开新的）
+    async function endCurrentCycle() {
+      const cur = currentCycle();
+      if (!cur) return;
+      if (!confirm("确定结束本周期吗？结束后可以随时开启新周期。")) return;
+      let end = today();
+      if (end < cur.start_date) end = cur.start_date;   // 防止结束日早于开始日
+      cur.end_date = end; render();                     // 乐观更新
+      const { error } = await sb.from("cycles").update({ end_date: end }).eq("id", cur.id);
+      if (error) { cur.end_date = null; render(); alert("结束周期失败：" + error.message); }
     }
 
     // ===== 画界面 =====
+    // 把 "2026-06-01" 显示成 "6月1日"
+    function prettyDate(s) {
+      if (!s || s.length < 10) return s || "";
+      return `${Number(s.slice(5, 7))}月${Number(s.slice(8, 10))}日`;
+    }
+
     function renderBudget() {
       const body = document.getElementById("budgetBody");
-      const input = document.getElementById("budgetInput");
-      if (budget === null || isNaN(budget)) {
-        body.innerHTML = '<div class="budget-empty">还没设本月预算，上面填个金额点「保存」，就能开始管控啦 👆</div>';
+      const endBtn = document.getElementById("endCycleBtn");
+      const cur = currentCycle();
+
+      // 没有进行中的周期：显示提示（若有上一个已结束的周期，给个小结）
+      if (!cur) {
+        endBtn.style.display = "none";
+        const closed = cycles.filter((c) => c.end_date);
+        if (closed.length > 0) {
+          const last = closed.reduce((a, b) => (a.start_date >= b.start_date ? a : b));
+          const spent = sumByCycle(records, last);
+          const { remain } = budgetStatus(spent, last.budget);
+          const verdict = remain >= 0
+            ? `结余 ${remain.toFixed(2)} 元 👍`
+            : `超支 ${Math.abs(remain).toFixed(2)} 元`;
+          body.innerHTML =
+            `<div class="budget-empty">上个周期（${prettyDate(last.start_date)}–${prettyDate(last.end_date)}）` +
+            `已结束：花了 ${spent.toFixed(2)} / 预算 ${last.budget.toFixed(2)} 元，${verdict}<br>` +
+            `点右上「开启新周期」开始新的一期 👆</div>`;
+        } else {
+          body.innerHTML = '<div class="budget-empty">还没开启资金周期。点右上「开启新周期」，填好预算和开始日期就能开始管控啦 👆</div>';
+        }
         return;
       }
-      if (document.activeElement !== input) input.value = budget;
-      const spent = sumByMonth(records, currentMonth());
-      const { pct, remain, state } = budgetStatus(spent, budget);
+
+      // 有进行中的周期：算本周期已花、剩余、进度
+      endBtn.style.display = "";
+      const spent = sumByCycle(records, cur);
+      const { pct, remain, state } = budgetStatus(spent, cur.budget);
       const barWidth = Math.min(pct, 100);
-      const remainLabel = remain >= 0 ? "本月还剩" : "本月已超支";
+      const remainLabel = remain >= 0 ? "本周期还剩" : "本周期已超支";
       let msg = `已用 ${pct.toFixed(0)}%`;
       if (state === "warn") msg = `⚠️ 快到预算了，悠着点 · 已用 ${pct.toFixed(0)}%`;
-      if (state === "over") msg = `🚨 本月已超支！· 已用 ${pct.toFixed(0)}%`;
+      if (state === "over") msg = `🚨 本周期已超支！· 已用 ${pct.toFixed(0)}%`;
       body.innerHTML = `
         <div class="budget-hero">
           <span class="budget-remain-label">${remainLabel}</span>
           <span class="budget-remain ${state}">¥${Math.abs(remain).toFixed(2)}</span>
-          <div class="budget-sub">已花 ${spent.toFixed(2)} / 预算 ${budget.toFixed(2)} 元</div>
+          <div class="budget-sub">已花 ${spent.toFixed(2)} / 预算 ${cur.budget.toFixed(2)} 元</div>
         </div>
         <div class="bar"><div class="bar-fill ${state}" style="width:${barWidth}%"></div></div>
-        <div class="budget-msg ${state}">${msg}</div>`;
+        <div class="budget-msg ${state}">${msg}</div>
+        <div class="cycle-range">本周期：从 <b>${prettyDate(cur.start_date)}</b> 开始（进行中）</div>`;
     }
 
     // 本月消费构成：环形图 + 图例（纯 CSS，用 conic-gradient 画）
     const CAT_COLORS = ["#b6ff3a", "#38bdf8", "#ffc24b", "#ff5d73", "#a78bfa", "#34d399", "#f472b6", "#60a5fa"];
     function renderCategoryChart() {
       const box = document.getElementById("catChart");
-      const month = currentMonth();
-      const monthRecords = records.filter((r) => typeof r.time === "string" && r.time.startsWith(month));
-      const cats = sumByCategory(monthRecords);  // 已按金额从高到低排好
+      const cur = currentCycle();
+      if (!cur) {
+        box.innerHTML = '<div class="budget-empty">开启资金周期后，这里会显示本周期的消费构成</div>';
+        return;
+      }
+      const cycleRecords = records.filter((r) => inCycle(r, cur));
+      const cats = sumByCategory(cycleRecords);  // 已按金额从高到低排好
       const total = cats.reduce((s, c) => s + c[1], 0);
 
       if (cats.length === 0 || total <= 0) {
-        box.innerHTML = '<div class="budget-empty">本月还没有消费记录</div>';
+        box.innerHTML = '<div class="budget-empty">本周期还没有消费记录</div>';
         return;
       }
 
@@ -510,7 +662,7 @@
             `<div class="donut" style="background: conic-gradient(${segs});"></div>` +
             '<div class="donut-center">' +
               `<span class="donut-total">${total.toFixed(0)}</span>` +
-              '<span class="donut-unit">元 · 本月</span>' +
+              '<span class="donut-unit">元 · 本周期</span>' +
             '</div>' +
           '</div>' +
           `<div class="donut-top">最大头：<b style="color:${top.color}">${escapeHtml(top.name)}</b> 占 ${top.pct.toFixed(0)}%</div>` +
@@ -520,7 +672,10 @@
 
     function render() {
       renderBudget();
-      renderCategoryChart(); // 本月消费构成图随记账/删除实时更新
+      renderCategoryChart(); // 本周期消费构成图随记账/删除实时更新
+      // 记一笔的日期框：没填时默认今天
+      const rd = document.getElementById("recordDate");
+      if (rd && !rd.value) rd.value = today();
       const totalEl = document.getElementById("total");
       const byCatEl = document.getElementById("byCat");
       const listEl = document.getElementById("list");
@@ -545,6 +700,7 @@
               <span class="time">${r.time}</span>
             </div>
             <span class="amount">${r.amount.toFixed(2)} 元</span>
+            <button class="editdate" data-id="${r.id}">改日期</button>
             <button class="del" data-id="${r.id}">删除</button>
           </div>`;
       }).reverse().join("");
@@ -593,8 +749,10 @@
     document.getElementById("addBtn").addEventListener("click", addRecord);
     document.getElementById("aiBtn").addEventListener("click", aiParse);
     document.getElementById("aiInput").addEventListener("keydown", (e) => { if (e.key === "Enter") aiParse(); });
-    document.getElementById("saveBudgetBtn").addEventListener("click", setBudget);
-    document.getElementById("budgetInput").addEventListener("keydown", (e) => { if (e.key === "Enter") setBudget(); });
+    document.getElementById("newCycleBtn").addEventListener("click", toggleNewCycleForm);
+    document.getElementById("endCycleBtn").addEventListener("click", endCurrentCycle);
+    document.getElementById("confirmNewCycleBtn").addEventListener("click", confirmNewCycle);
+    document.getElementById("cycleBudgetInput").addEventListener("keydown", (e) => { if (e.key === "Enter") confirmNewCycle(); });
     document.getElementById("note").addEventListener("keydown", (e) => { if (e.key === "Enter") addRecord(); });
     document.getElementById("exportBtn").addEventListener("click", exportJSON);
     document.getElementById("importBtn").addEventListener("click", () => document.getElementById("importFile").click());
@@ -604,6 +762,7 @@
     });
     document.getElementById("list").addEventListener("click", (e) => {
       if (e.target.classList.contains("del")) deleteRecord(e.target.dataset.id);
+      else if (e.target.classList.contains("editdate")) editDate(e.target.dataset.id);
     });
 
     // ===== 启动：检查登录状态 =====
