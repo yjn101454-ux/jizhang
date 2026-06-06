@@ -7,6 +7,7 @@ const assert = require("node:assert");
 const {
   formatDateTime, monthKey, isValidAmount,
   sumByMonth, sumAll, sumByCategory, budgetStatus,
+  dateOf, inCycle, openCycle, sumByCycle,
 } = require("./logic.js");
 
 // 金额是小数，相加可能有微小的浮点误差，所以用「足够接近」来判断
@@ -85,4 +86,45 @@ test("budgetStatus：剩余金额与百分比算得对", () => {
   close(budgetStatus(150, 100).remain, -50);
   // 预算为 0 时不报错，百分比按 0 处理
   assert.strictEqual(budgetStatus(50, 0).pct, 0);
+});
+
+test("dateOf：取出记录的日期部分", () => {
+  assert.strictEqual(dateOf({ time: "2026-06-02 00:30" }), "2026-06-02");
+  assert.strictEqual(dateOf({}), ""); // 没有 time 不报错
+});
+
+test("inCycle：判断一笔账是否落在周期里", () => {
+  // 进行中的周期（没结束）：6-01 起，往后都算
+  const open = { start_date: "2026-06-01", end_date: null };
+  assert.strictEqual(inCycle({ time: "2026-06-02 00:17" }, open), true);
+  assert.strictEqual(inCycle({ time: "2026-06-01 09:00" }, open), true); // 开始当天算
+  assert.strictEqual(inCycle({ time: "2026-05-31 09:00" }, open), false); // 早于开始不算
+  // 已结束的周期：5-01 到 5-31
+  const closed = { start_date: "2026-05-01", end_date: "2026-05-31" };
+  assert.strictEqual(inCycle({ time: "2026-05-20 12:00" }, closed), true);
+  assert.strictEqual(inCycle({ time: "2026-05-31 23:00" }, closed), true); // 结束当天算
+  assert.strictEqual(inCycle({ time: "2026-06-01 00:00" }, closed), false); // 结束之后不算
+  // 没有周期时一律 false
+  assert.strictEqual(inCycle({ time: "2026-06-02 00:17" }, null), false);
+});
+
+test("openCycle：从一堆周期里找出进行中的那个", () => {
+  const cycles = [
+    { id: 1, start_date: "2026-05-01", end_date: "2026-05-31" }, // 已结束
+    { id: 2, start_date: "2026-06-01", end_date: null },         // 进行中
+  ];
+  assert.strictEqual(openCycle(cycles).id, 2);
+  // 全部已结束 → 没有进行中的
+  assert.strictEqual(openCycle([{ id: 1, start_date: "2026-05-01", end_date: "2026-05-31" }]), null);
+  // 空列表 / 没传 → null，不报错
+  assert.strictEqual(openCycle([]), null);
+  assert.strictEqual(openCycle(undefined), null);
+});
+
+test("sumByCycle：只统计落在本周期里的金额", () => {
+  const open = { start_date: "2026-06-01", end_date: null };
+  close(sumByCycle(sample, open), 181.4);  // 4 笔 6 月的，排除 5 月那笔 9.9
+  const may = { start_date: "2026-05-01", end_date: "2026-05-31" };
+  close(sumByCycle(sample, may), 9.9);
+  close(sumByCycle(sample, null), 0);      // 没有周期 → 0
 });

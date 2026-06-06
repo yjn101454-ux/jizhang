@@ -41,6 +41,39 @@ function sumByCategory(records) {
   return Object.entries(map).sort((a, b) => b[1] - a[1]);
 }
 
+// 取一笔记录的「日期」部分（"YYYY-MM-DD"）。time 形如 "2026-06-07 12:30"
+function dateOf(record) {
+  return typeof record.time === "string" ? record.time.slice(0, 10) : "";
+}
+
+// 判断一笔记录是否落在某个周期里。
+// 周期 cycle = { start_date: "YYYY-MM-DD", end_date: "YYYY-MM-DD" 或 null/空 }
+// 规则：记录日期 >= 开始日期，且（周期还没结束，或 记录日期 <= 结束日期）。
+// ISO 日期字符串可以直接比大小，所以用字符串比较即可。
+function inCycle(record, cycle) {
+  if (!cycle) return false;
+  const d = dateOf(record);
+  if (!d || !cycle.start_date) return false;
+  if (d < cycle.start_date) return false;
+  if (cycle.end_date && d > cycle.end_date) return false;
+  return true;
+}
+
+// 从一堆周期里找出「当前进行中」的那个（end_date 为空）。
+// 万一有多个开着的（理论上不该发生），取开始日期最新的那个。返回该周期或 null。
+function openCycle(cycles) {
+  const open = (cycles || []).filter((c) => !c.end_date);
+  if (open.length === 0) return null;
+  return open.reduce((a, b) => (a.start_date >= b.start_date ? a : b));
+}
+
+// 本周期已花：把落在该周期里的记录金额加起来
+function sumByCycle(records, cycle) {
+  return records
+    .filter((r) => inCycle(r, cycle))
+    .reduce((sum, r) => sum + r.amount, 0);
+}
+
 // 预算状态：传入「已花」和「预算」，返回 { pct, remain, state }
 //   pct    用掉的百分比
 //   remain 还剩多少（负数表示超支）
@@ -62,5 +95,6 @@ if (typeof module !== "undefined" && module.exports) {
   module.exports = {
     formatDateTime, monthKey, isValidAmount,
     sumByMonth, sumAll, sumByCategory, budgetStatus,
+    dateOf, inCycle, openCycle, sumByCycle,
   };
 }
