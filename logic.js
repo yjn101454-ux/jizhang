@@ -105,6 +105,17 @@ function dailyTotals(records, startStr, endStr) {
   return out;
 }
 
+// 本周期里最大的 n 笔消费（按金额从高到低），用于报告里点名「大头开销」。
+// 返回精简对象数组：[{ amount, category, note, date }]
+function topExpenses(records, cycle, n) {
+  return records
+    .filter((r) => inCycle(r, cycle))
+    .slice()
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, n)
+    .map((r) => ({ amount: r.amount, category: r.category, note: r.note || "", date: dateOf(r) }));
+}
+
 // 花钱节奏：传入已花、预算、已过天数，算出日均、剩余、按当前速度还能撑几天。
 //   dailyAvg        日均消费
 //   remain          剩余预算（负数=已超支）
@@ -138,6 +149,6 @@ if (typeof module !== "undefined" && module.exports) {
     formatDateTime, monthKey, isValidAmount,
     sumByMonth, sumAll, sumByCategory, budgetStatus,
     dateOf, inCycle, openCycle, sumByCycle,
-    addDays, daysBetween, dailyTotals, pacing,
+    addDays, daysBetween, dailyTotals, pacing, topExpenses,
   };
 }

@@ -111,6 +111,14 @@
     .pace-text { font-size: 13px; color: var(--muted); margin-top: 6px; text-align: center; line-height: 1.6; }
     .pace-text b { color: var(--text); font-weight: 700; }
     .more-hint { font-size: 13px; color: var(--muted); margin: 6px 0 14px; line-height: 1.6; }
+    /* AI 报告 */
+    .report-meta { font-size: 12px; color: var(--muted); margin: 6px 0 12px; font-family: "JetBrains Mono", monospace; }
+    .report-text { line-height: 1.8; font-size: 14.5px; color: var(--text); }
+    .report-text h3 { font-size: 15px; margin: 18px 0 6px; color: var(--neon); }
+    .report-text ul { margin: 6px 0; padding-left: 20px; }
+    .report-text li { margin: 5px 0; }
+    .report-text p { margin: 8px 0; }
+    .report-text strong { color: var(--text); font-weight: 700; }
     /* ApexCharts 在深色卡片上的微调 */
     .apexcharts-tooltip { font-family: "JetBrains Mono", monospace !important; }
     .apexcharts-legend-text { color: var(--muted) !important; }
@@ -213,6 +221,7 @@
       <button class="tab active" data-tab="overview">总览</button>
       <button class="tab" data-tab="record">记账</button>
       <button class="tab" data-tab="stats">统计</button>
+      <button class="tab" data-tab="report">报告</button>
       <button class="tab" data-tab="more">更多</button>
     </nav>
 
@@ -315,6 +324,17 @@
       </section>
     </div>
 
+    <!-- ===== 报告：AI 消费报告 ===== -->
+    <div class="tab-panel" data-panel="report" hidden>
+      <section class="card" style="--i:1">
+        <div class="card-head">
+          <span class="label" style="margin:0">📝 AI 消费报告</span>
+          <button id="genReportBtn" class="cycle-btn">生成本期报告</button>
+        </div>
+        <div id="reportBody"></div>
+      </section>
+    </div>
+
     <!-- ===== 更多：备份 ===== -->
     <div class="tab-panel" data-panel="more" hidden>
       <section class="card" style="--i:1">
@@ -352,6 +372,7 @@
     let records = [];
     let budget = null;        // 上次用过的预算（来自 settings，做新周期的默认建议值）
     let cycles = [];          // 所有资金周期（每个有 start_date / end_date / budget）
+    let reports = [];         // 已生成的 AI 报告（按时间倒序）
     let currentUser = null;
     let activeTab = "overview"; // 当前在看哪个标签页
 
@@ -399,7 +420,7 @@
 
     async function signOut() {
       await sb.auth.signOut();
-      records = []; budget = null; cycles = [];
+      records = []; budget = null; cycles = []; reports = [];
     }
 
     // ===== 云端读写 =====
@@ -420,6 +441,13 @@
         .select("id, start_date, end_date, budget")
         .order("start_date", { ascending: true });
       cycles = (cyc || []).map((c) => ({ ...c, budget: Number(c.budget) }));
+
+      // 读已生成的 AI 报告（按时间倒序）
+      const { data: rep } = await sb
+        .from("reports")
+        .select("id, cycle_id, period, content, created_at")
+        .order("created_at", { ascending: false });
+      reports = rep || [];
     }
 
     async function refresh() { await loadAll(); render(); }
@@ -846,9 +874,117 @@
       });
     }
 
+    // ===== AI 消费报告 =====
+    // 把本周期的各项汇总打包成给后端/AI 用的数据
+    function buildReportData(cur) {
+      const spent = sumByCycle(records, cur);
+      const { pct, remain, state } = budgetStatus(spent, cur.budget);
+      const daysElapsed = Math.max(1, daysBetween(cur.start_date, today()) + 1);
+      const p = pacing(spent, cur.budget, daysElapsed);
+      const cycleRecords = records.filter((r) => inCycle(r, cur));
+      const cats = sumByCategory(cycleRecords);
+      const total = cats.reduce((s, c) => s + c[1], 0) || 1;
+      const categories = cats.map((c) => ({ name: c[0], amount: Number(c[1].toFixed(2)), pct: Math.round((c[1] / total) * 100) }));
+      const tops = topExpenses(records, cur, 5).map((t) => ({ ...t, amount: Number(t.amount.toFixed(2)) }));
+      // 上一周期（已结束里开始日最新的那个）做对比
+      const closed = cycles.filter((c) => c.end_date).sort((a, b) => (a.start_date < b.start_date ? 1 : -1));
+      const prevC = closed[0];
+      const prev = prevC
+        ? { exists: true, spent: Number(sumByCycle(records, prevC).toFixed(2)), budget: Number(Number(prevC.budget).toFixed(2)) }
+        : { exists: false };
+      return {
+        period: `本资金周期（${prettyDate(cur.start_date)} 起，第 ${daysElapsed} 天）`,
+        budget: Number(cur.budget.toFixed(2)), spent: Number(spent.toFixed(2)), remain: Number(remain.toFixed(2)),
+        pct: Math.round(pct), daysElapsed, dailyAvg: Number(p.dailyAvg.toFixed(2)),
+        daysLeftAtRate: isFinite(p.daysLeftAtRate) ? Math.floor(p.daysLeftAtRate) : null,
+        state, categories, topExpenses: tops, prev,
+      };
+    }
+
+    // 极简 Markdown 渲染（只认 ## 标题 / - 列表 / **加粗**），先转义防注入
+    function renderMarkdownLite(md) {
+      const esc = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+      const inline = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+      let html = "", inList = false;
+      for (const raw of String(md).split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line) { if (inList) { html += "</ul>"; inList = false; } continue; }
+        if (/^#{1,6}\s/.test(line)) {
+          if (inList) { html += "</ul>"; inList = false; }
+          html += "<h3>" + inline(line.replace(/^#{1,6}\s/, "")) + "</h3>";
+        } else if (/^[-*]\s/.test(line)) {
+          if (!inList) { html += "<ul>"; inList = true; }
+          html += "<li>" + inline(line.replace(/^[-*]\s/, "")) + "</li>";
+        } else {
+          if (inList) { html += "</ul>"; inList = false; }
+          html += "<p>" + inline(line) + "</p>";
+        }
+      }
+      if (inList) html += "</ul>";
+      return html;
+    }
+
+    function renderReport() {
+      const box = document.getElementById("reportBody");
+      const btn = document.getElementById("genReportBtn");
+      const cur = currentCycle();
+      if (!cur) {
+        btn.style.display = "none";
+        box.innerHTML = '<div class="budget-empty">先在「总览」开启一个资金周期，才能生成本期报告 📝</div>';
+        return;
+      }
+      btn.style.display = "";
+      const mine = reports.filter((r) => r.cycle_id === cur.id);   // loadAll 已按时间倒序
+      if (mine.length === 0) {
+        box.innerHTML = '<div class="budget-empty">还没有本期报告。点右上「生成本期报告」，让 AI 帮你分析这段时间的花销 ✨</div>';
+        return;
+      }
+      const latest = mine[0];
+      const when = String(latest.created_at || "").replace("T", " ").slice(0, 16);
+      box.innerHTML = `<div class="report-meta">🕒 生成于 ${when}</div>` +
+        `<div class="report-text">${renderMarkdownLite(latest.content)}</div>`;
+    }
+
+    async function generateReport() {
+      const cur = currentCycle();
+      if (!cur) return;
+      const btn = document.getElementById("genReportBtn");
+      const box = document.getElementById("reportBody");
+      btn.disabled = true;
+      box.innerHTML = '<div class="budget-empty">AI 正在分析你的消费、撰写报告，请稍候… ⏳</div>';
+      try {
+        const r = await fetch("/api/report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: buildReportData(cur) }),
+        });
+        const json = await r.json().catch(() => ({}));
+        if (!r.ok) {
+          box.innerHTML = `<div class="budget-empty">生成失败：${escapeHtml(json.error || ("HTTP " + r.status))}</div>`;
+          return;
+        }
+        const content = json.report || "";
+        // 存到云端，方便下次回看、也省得重复调 AI
+        const { data: saved, error } = await sb.from("reports")
+          .insert({ cycle_id: cur.id, period: buildReportData(cur).period, content })
+          .select().single();
+        if (error) {
+          box.innerHTML = `<div class="report-text">${renderMarkdownLite(content)}</div>`;   // 存失败也先显示
+        } else {
+          reports.unshift(saved);
+          renderReport();
+        }
+      } catch (e) {
+        box.innerHTML = `<div class="budget-empty">生成出错（AI 功能需用 Vercel 网址访问）：${escapeHtml(e.message || e)}</div>`;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
     function render() {
       renderBudget();
       renderCharts(); // 各种图表随记账/删除实时更新
+      renderReport(); // AI 报告标签内容
       // 记一笔的日期框：没填时默认今天
       const rd = document.getElementById("recordDate");
       if (rd && !rd.value) rd.value = today();
@@ -942,6 +1078,7 @@
     document.getElementById("googleBtn").addEventListener("click", signInGoogle);
     document.getElementById("logoutBtn").addEventListener("click", signOut);
     document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
+    document.getElementById("genReportBtn").addEventListener("click", generateReport);
     document.getElementById("addBtn").addEventListener("click", addRecord);
     document.getElementById("aiBtn").addEventListener("click", aiParse);
     document.getElementById("aiInput").addEventListener("keydown", (e) => { if (e.key === "Enter") aiParse(); });

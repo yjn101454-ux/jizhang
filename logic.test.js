@@ -8,7 +8,7 @@ const {
   formatDateTime, monthKey, isValidAmount,
   sumByMonth, sumAll, sumByCategory, budgetStatus,
   dateOf, inCycle, openCycle, sumByCycle,
-  addDays, daysBetween, dailyTotals, pacing,
+  addDays, daysBetween, dailyTotals, pacing, topExpenses,
 } = require("./logic.js");
 
 // 金额是小数，相加可能有微小的浮点误差，所以用「足够接近」来判断
@@ -153,6 +153,21 @@ test("dailyTotals：逐天求和、没消费的天补 0", () => {
   assert.strictEqual(out[0].date, "2026-06-01"); close(out[0].amount, 15); // 同一天两笔合并
   assert.strictEqual(out[1].date, "2026-06-02"); close(out[1].amount, 0);  // 没消费补 0
   assert.strictEqual(out[2].date, "2026-06-03"); close(out[2].amount, 8);
+});
+
+test("topExpenses：本周期最大的几笔，按金额从高到低", () => {
+  const cyc = { start_date: "2026-06-01", end_date: null };
+  const recs = [
+    { amount: 35.5, category: "餐饮", note: "午饭", time: "2026-06-02 12:00" },
+    { amount: 100, category: "购物", note: "买书", time: "2026-06-03 12:00" },
+    { amount: 20, category: "交通", note: "", time: "2026-06-04 12:00" },
+    { amount: 9.9, category: "餐饮", note: "上月", time: "2026-05-20 12:00" }, // 不在周期内
+  ];
+  const top = topExpenses(recs, cyc, 2);
+  assert.strictEqual(top.length, 2);
+  assert.strictEqual(top[0].category, "购物"); close(top[0].amount, 100);
+  assert.strictEqual(top[1].category, "餐饮"); close(top[1].amount, 35.5);
+  assert.strictEqual(top[0].date, "2026-06-03"); // 带日期
 });
 
 test("pacing：日均与「还能撑几天」", () => {
