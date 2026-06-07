@@ -28,7 +28,7 @@ GitHub 仓库：https://github.com/yjn101454-ux/jizhang （公开）。每次 pu
 - 仓库已连两处自动部署：**GitHub Pages**（main 分支 / 根目录）和 **Vercel**（项目 `jizhang`，团队「yjn101454-9383's projects」，已接 GitHub）。一次 `git push` → CI 测试 + 两个线上版都自动更新。
 - `.vercelignore` 负责部署到 Vercel 时排除私人数据（`data.json`）；`.vercel/` 是本地链接配置，已被 git 忽略。
 - **数据库 & 登录**：Supabase 项目 `jizhang`（id `spavepwzzxcslbcxgdbv`，区域 ap-south-1）。Google 登录已配好（Google Cloud OAuth + Supabase Google Provider + URL 白名单含两个线上网址与 `localhost:8000`）。改表/查数据可用 Supabase MCP。
-- **AI**：用 DeepSeek（OpenAI 兼容接口，`deepseek-chat` 模型）。key 存在 Vercel 环境变量 `DEEPSEEK_API_KEY`（只在服务端、不入代码/git）。改完环境变量需重新部署才生效。
+- **AI**：用 DeepSeek（OpenAI 兼容接口）。当前模型 `deepseek-v4-flash`（旧名 `deepseek-chat`/`deepseek-reasoner` 2026-07-24 停用）；`deepseek-v4-pro` 是更强档。思考模式默认开启，可用请求体参数 `thinking:{type:"enabled"/"disabled"}` 切换。**报告 `api/report.js` 用默认思考模式**（先推理再写、合计更准）；**记账解析 `api/parse.js` 关掉思考**（`thinking:{type:"disabled"}`，保持秒回）。key 存在 Vercel 环境变量 `DEEPSEEK_API_KEY`（只在服务端、不入代码/git）。改完环境变量需重新部署才生效。
 
 ## 文件清单
 | 文件 | 作用 |

@@ -49,10 +49,13 @@ module.exports = async (req, res) => {
         "Authorization": "Bearer " + key,
       },
       body: JSON.stringify({
-        model: "deepseek-chat",
+        // deepseek-v4-flash：当前模型（旧名 deepseek-chat 即将停用）。
+        // 解析一句话很简单，关掉思考模式保持秒回。
+        model: "deepseek-v4-flash",
         messages: [{ role: "user", content: prompt }],
         temperature: 0,
         response_format: { type: "json_object" },
+        thinking: { type: "disabled" },
       }),
     });
 
