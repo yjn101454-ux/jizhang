@@ -886,6 +886,12 @@
       const total = cats.reduce((s, c) => s + c[1], 0) || 1;
       const categories = cats.map((c) => ({ name: c[0], amount: Number(c[1].toFixed(2)), pct: Math.round((c[1] / total) * 100) }));
       const tops = topExpenses(records, cur, 5).map((t) => ({ ...t, amount: Number(t.amount.toFixed(2)) }));
+      // 逐笔明细（重点：带上每笔的备注，让 AI 主要照备注分析）。太多则取最近 100 笔。
+      const items = cycleRecords
+        .slice()
+        .sort((a, b) => (a.time < b.time ? 1 : -1))   // 新到旧
+        .slice(0, 100)
+        .map((r) => ({ date: dateOf(r), note: r.note || "", category: r.category, amount: Number(r.amount.toFixed(2)) }));
       // 上一周期（已结束里开始日最新的那个）做对比
       const closed = cycles.filter((c) => c.end_date).sort((a, b) => (a.start_date < b.start_date ? 1 : -1));
       const prevC = closed[0];
@@ -898,6 +904,7 @@
         pct: Math.round(pct), daysElapsed, dailyAvg: Number(p.dailyAvg.toFixed(2)),
         daysLeftAtRate: isFinite(p.daysLeftAtRate) ? Math.floor(p.daysLeftAtRate) : null,
         state, categories, topExpenses: tops, prev,
+        items, itemCount: cycleRecords.length,
       };
     }
 
