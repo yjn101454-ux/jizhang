@@ -875,27 +875,38 @@
     }
 
     // ===== AI 消费报告 =====
-    // 只把「原始逐笔明细 + 基本背景」发给 AI，分组/计数/求和/对比全交给 AI 完成。
+    // 关键数字全部用代码算准（和总览/统计同一套），只把「精确小计」发给 AI；
+    // AI 只负责合并同义备注、点评、给建议，不让它去加一长串原始流水。
     function buildReportData(cur) {
-      const end = cur.end_date || today();   // 周期结束日（没结束就到今天）
+      const end = cur.end_date || today();
+      const spent = sumByCycle(records, cur);
+      const { pct, remain, state } = budgetStatus(spent, cur.budget);
       const daysElapsed = Math.max(1, daysBetween(cur.start_date, today()) + 1);
-      const toItem = (r) => ({ date: dateOf(r), note: r.note || "", category: r.category, amount: Number(r.amount.toFixed(2)) });
-      const byTimeDesc = (a, b) => (a.time < b.time ? 1 : -1);
-      const items = records.filter((r) => inCycle(r, cur)).sort(byTimeDesc).slice(0, 200).map(toItem);
-      // 上一周期（已结束里开始日最新的那个）——也给原始明细，让 AI 自己算来对比
+      const p = pacing(spent, cur.budget, daysElapsed);
+      const cycleRecords = records.filter((r) => inCycle(r, cur));
+      // 分类合计（精确）
+      const cats = sumByCategory(cycleRecords);
+      const total = cats.reduce((s, c) => s + c[1], 0) || 1;
+      const categories = cats.map((c) => ({ name: c[0], amount: Number(c[1].toFixed(2)), pct: Math.round((c[1] / total) * 100) }));
+      // 按备注合计（精确：次数+金额）——给 AI 做归类，它最多把几条同义的小计相加
+      const byNote = sumByNote(records, cur).slice(0, 30)
+        .map((n) => ({ note: n.note, count: n.count, sum: Number(n.sum.toFixed(2)) }));
+      // 花得最多的几天（精确）
+      const topDays = dailyTotals(cycleRecords, cur.start_date, end)
+        .filter((d) => d.amount > 0).sort((a, b) => b.amount - a.amount).slice(0, 5)
+        .map((d) => ({ date: d.date, amount: Number(d.amount.toFixed(2)) }));
+      // 上一周期（已结束里开始日最新的那个）做对比（精确）
       const closed = cycles.filter((c) => c.end_date).sort((a, b) => (a.start_date < b.start_date ? 1 : -1));
       const prevC = closed[0];
       const prev = prevC
-        ? { exists: true, period: `${prettyDate(prevC.start_date)}–${prettyDate(prevC.end_date)}`,
-            budget: Number(Number(prevC.budget).toFixed(2)),
-            items: records.filter((r) => inCycle(r, prevC)).sort(byTimeDesc).slice(0, 200).map(toItem) }
+        ? { exists: true, spent: Number(sumByCycle(records, prevC).toFixed(2)), budget: Number(Number(prevC.budget).toFixed(2)) }
         : { exists: false };
       return {
         period: `本资金周期（${prettyDate(cur.start_date)} 起，到 ${prettyDate(end)}，已第 ${daysElapsed} 天）`,
-        budget: Number(cur.budget.toFixed(2)),
-        daysElapsed,
-        itemCount: records.filter((r) => inCycle(r, cur)).length,
-        items, prev,
+        budget: Number(cur.budget.toFixed(2)), spent: Number(spent.toFixed(2)), remain: Number(remain.toFixed(2)),
+        pct: Math.round(pct), daysElapsed, dailyAvg: Number(p.dailyAvg.toFixed(2)),
+        daysLeftAtRate: isFinite(p.daysLeftAtRate) ? Math.floor(p.daysLeftAtRate) : null,
+        state, categories, byNote, topDays, prev,
       };
     }
 

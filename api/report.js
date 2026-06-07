@@ -21,48 +21,57 @@ module.exports = async (req, res) => {
   const data = body && body.data ? body.data : null;
   if (!data) { res.status(400).json({ error: "没有汇总数据" }); return; }
 
-  // 逐笔明细（原始数据，分组/计数/求和全交给 AI 自己算）
-  const fmtItems = (arr) => (arr || [])
-    .map((it) => `${it.date}　${it.note || "（无备注）"}　¥${it.amount}　[自动分类:${it.category || "无"}]`)
-    .join("\n") || "（无）";
-  const itemLines = fmtItems(data.items);
-  const moreNote = data.itemCount && data.items && data.itemCount > data.items.length
-    ? `（共 ${data.itemCount} 笔，下面列了最近 ${data.items.length} 笔）`
-    : "";
+  // 预算状态：用代码算好的 remain 直接判定方向，做成一句话，AI 必须照搬，不能算反
+  const over = Number(data.remain) < 0;
+  const statusLine = over
+    ? `已超支 ¥${Math.abs(data.remain).toFixed(2)}（已用 ${data.pct}%）`
+    : `还剩 ¥${Number(data.remain).toFixed(2)}（已用 ${data.pct}%）`;
 
-  let prevBlock = "（没有上一周期可对比）";
-  if (data.prev && data.prev.exists) {
-    prevBlock = `上一周期（${data.prev.period}），预算 ¥${data.prev.budget}，逐笔明细：\n` + fmtItems(data.prev.items);
-  }
+  // 按备注合计（精确，已替你算好次数和金额）
+  const byNoteLines = (data.byNote || [])
+    .map((n) => `${n.note}：${n.count} 次，合计 ¥${n.sum}`).join("\n") || "暂无";
+  // 分类合计（精确）
+  const catLines = (data.categories || [])
+    .map((c) => `${c.name} ¥${c.amount}（${c.pct}%）`).join("、") || "暂无";
+  // 花得最多的几天（精确）
+  const topDaysLines = (data.topDays || [])
+    .map((d) => `${d.date}：¥${d.amount}`).join("；") || "暂无";
+  const prev = data.prev && data.prev.exists
+    ? `上一周期花了 ¥${data.prev.spent}（预算 ¥${data.prev.budget}）`
+    : "没有上一周期可比";
 
+  // 这些数字全部由网页用代码算准（和 App 首页同一套），AI 只许引用、不许自行改算。
   const facts =
     `周期：${data.period}\n` +
     `本期预算：¥${data.budget}\n` +
-    `已过天数：${data.daysElapsed} 天\n\n` +
-    `本周期逐笔明细 ${moreNote}（格式：日期　备注　¥金额　[自动分类]）：\n` +
-    itemLines +
-    `\n\n上一周期数据（用于对比）：\n` + prevBlock;
+    `本期总花费：¥${data.spent}\n` +
+    `预算状态：${statusLine}\n` +
+    `已过 ${data.daysElapsed} 天，日均 ¥${data.dailyAvg}。` +
+    (typeof data.daysLeftAtRate === "number" ? `照当前花法，剩余预算还能撑约 ${data.daysLeftAtRate} 天。\n` : "\n") +
+    `\n【按备注合计（精确，已替你算好次数和金额）】：\n${byNoteLines}\n\n` +
+    `【分类合计（精确）】：${catLines}\n\n` +
+    `【花得最多的几天（精确）】：${topDaysLines}\n\n` +
+    `【和上一周期比较】：${prev}`;
 
   const prompt =
-    "你是一个温暖、接地气、又心思缜密的记账小助手，正在帮一个容易超支的大学生看清这段时间的花销、并鼓励 ta 别超预算。\n" +
-    "下面是这名学生的真实消费流水（金额单位都是人民币元）：\n\n" +
+    "你是一个温暖、接地气的记账小助手，正在帮一个容易超支的大学生看清这段时间的花销、并鼓励 ta 别超预算。\n" +
+    "下面这些数字【已经由程序精确算好了】（和这名学生 App 首页看到的完全一致，单位都是人民币元）：\n\n" +
     facts +
-    "\n\n请你【自己动手算】并写出报告。分析时请注意：\n" +
-    "A. 理解每笔钱花在啥上时【以「备注」为准】；后面的「自动分类」是程序猜的、可能不准，别照搬；把明显是同一处/同一类的备注（如「震天电竞」和「震天」、「蜜雪」和「蜜雪冰城」）合并到一起看。\n" +
-    "B. 【算账要稳，务必算准】：先按备注把消费归成几组，每组【先逐笔列出包含哪些金额、再相加】得到该组合计与次数；" +
-    "本期总花费 = 各组合计之和；剩余 = 预算 − 总花费；日均 = 总花费 ÷ 已过天数。" +
-    "算完后【自检一遍】：各组合计相加是否等于总花费？金额有没有抄错？不放心就重算一次，确认无误再写进报告。\n" +
-    "C. 数字要忠于流水，不要编造没有的消费。\n\n" +
-    "然后写一份简短的中文消费报告，要求：\n" +
-    "1. 口吻温暖、像朋友，别说教、别空话；多结合具体备注说话，点名真实的大头花销（如「震天电竞去了 3 次共 ¥125」）。\n" +
+    "\n\n【必须遵守的铁律】\n" +
+    "一、报告里的【本期总花费、预算、剩余/超支、百分比、日均、天数、还能撑几天】，" +
+    "【必须原样引用上面给的数字，严禁你自己再加、再算或改动】。尤其「预算状态」那一行——是超支还是有剩余，必须和它完全一致，绝不能说反。\n" +
+    "二、归纳「钱花在哪」时，用上面的【按备注合计】；理解每笔花在啥上以「备注」为准。" +
+    "如果你发现有几条备注其实是同一个地方/同一件事（如「震天电竞」和「震天」、「蜜雪」和「蜜雪冰城」），" +
+    "可以把它们的小计【相加合并】成一项并说明（只允许对我给的精确小计做这种少量相加，不要去推测我没给的数）。\n\n" +
+    "请写一份简短的中文消费报告，要求：\n" +
+    "1. 口吻温暖、像朋友，别说教、别空话；多结合具体备注说话，点名真实的大头花销（如「震天电竞去了 5 次共 ¥165」）。\n" +
     "2. 用这几个带 emoji 的小标题分段（用 Markdown 的「## 」开头）：\n" +
     "   ## 📊 概况  ## 💸 钱花在哪  ## ⚠️ 要注意  ## 💡 省钱建议  ## 🎯 下期小目标\n" +
-    "3. 「概况」点明本期总花费 / 预算 / 还剩多少 / 在不在轨道上；有上一周期就和它对比一句。\n" +
-    "4. 「钱花在哪」按备注归纳出真正的大头（带金额和次数）。\n" +
+    "3. 「概况」如实说明 总花费 / 预算 / 预算状态（超支或剩余，照搬上面）/ 日均；有上一周期就对比一句。\n" +
+    "4. 「钱花在哪」按「按备注合计」归纳真正的大头（带金额和次数）。\n" +
     "5. 「省钱建议」给 2~3 条具体、可执行的（结合最花钱的项来提）。\n" +
     "6. 「下期小目标」给一个可量化的小目标（如某类花销控制在多少元内）。\n" +
-    "7. 报告正文控制在 300~400 字，要点用「- 」列出，重点可用 **加粗**，金额带 ¥；" +
-    "不要在报告里展示你的计算草稿，只给最终结论。\n";
+    "7. 报告正文控制在 300~400 字，要点用「- 」列出，重点可用 **加粗**，金额带 ¥。\n";
 
   try {
     const r = await fetch("https://api.deepseek.com/chat/completions", {

@@ -28,7 +28,7 @@ GitHub 仓库：https://github.com/yjn101454-ux/jizhang （公开）。每次 pu
 - 仓库已连两处自动部署：**GitHub Pages**（main 分支 / 根目录）和 **Vercel**（项目 `jizhang`，团队「yjn101454-9383's projects」，已接 GitHub）。一次 `git push` → CI 测试 + 两个线上版都自动更新。
 - `.vercelignore` 负责部署到 Vercel 时排除私人数据（`data.json`）；`.vercel/` 是本地链接配置，已被 git 忽略。
 - **数据库 & 登录**：Supabase 项目 `jizhang`（id `spavepwzzxcslbcxgdbv`，区域 ap-south-1）。Google 登录已配好（Google Cloud OAuth + Supabase Google Provider + URL 白名单含两个线上网址与 `localhost:8000`）。改表/查数据可用 Supabase MCP。
-- **AI**：用 DeepSeek（OpenAI 兼容接口）。当前模型 `deepseek-v4-flash`（旧名 `deepseek-chat`/`deepseek-reasoner` 2026-07-24 停用）；`deepseek-v4-pro` 是更强档。思考模式默认开启，可用请求体参数 `thinking:{type:"enabled"/"disabled"}` 切换。**报告 `api/report.js` 用 `deepseek-v4-pro` + 默认思考模式**（更强、算账更稳，分组/求和/对比全由 AI 做）；**记账解析 `api/parse.js` 用 `deepseek-v4-flash` 并关掉思考**（`thinking:{type:"disabled"}`，保持秒回）。key 存在 Vercel 环境变量 `DEEPSEEK_API_KEY`（只在服务端、不入代码/git）。改完环境变量需重新部署才生效。
+- **AI**：用 DeepSeek（OpenAI 兼容接口）。当前模型 `deepseek-v4-flash`（旧名 `deepseek-chat`/`deepseek-reasoner` 2026-07-24 停用）；`deepseek-v4-pro` 是更强档。思考模式默认开启，可用请求体参数 `thinking:{type:"enabled"/"disabled"}` 切换。**报告 `api/report.js` 用 `deepseek-v4-pro` + 默认思考模式**（负责文字与合并同义备注；数字全部代码算好后塞给它、禁止它自行算）；**记账解析 `api/parse.js` 用 `deepseek-v4-flash` 并关掉思考**（`thinking:{type:"disabled"}`，保持秒回）。key 存在 Vercel 环境变量 `DEEPSEEK_API_KEY`（只在服务端、不入代码/git）。改完环境变量需重新部署才生效。
 
 ## 文件清单
 | 文件 | 作用 |
@@ -69,7 +69,7 @@ GitHub 仓库：https://github.com/yjn101454-ux/jizhang （公开）。每次 pu
   ③ 每日消费柱状图（周期内逐天，看哪天花得猛）；
   ④ 周期对比柱状图（最近几期 花费 vs 预算，看趋势）。
 - **AI 自然语言记账**（一句话自动识别金额/分类/备注，见第 4 步）
-- **AI 消费报告**（「报告」标签）：点「生成本期报告」，把本周期 **原始逐笔明细（日期/备注/金额）+ 预算 + 天数** 发给 DeepSeek（后端 `api/report.js`），**分组/计数/求和/对比全部由 AI 完成**（用户选择"全交给 AI"以求智能化）；生成含「概况/钱花在哪/要注意/省钱建议/下期小目标」的报告，存进 `reports` 表，下次进来看最新那份。提示词要求 **以备注为准**（合并同义备注）、**算账分组列账+自检**以降低算错。注意：LLM 算数非 100% 保证，纯代码精确数字见「统计」页可对照
+- **AI 消费报告**（「报告」标签）：点「生成本期报告」生成含「概况/钱花在哪/要注意/省钱建议/下期小目标」的报告，存进 `reports` 表，下次看最新那份。**关键架构（踩坑后定下）：所有数字（总花费/预算/剩余超支/百分比/日均/天数、按备注合计、分类合计、每日合计）一律由代码精确算好**（和总览/统计同一套，报告永不与首页矛盾），后端 `api/report.js` 把这些精确数字+一句明确的「预算状态」发给 DeepSeek；**AI 只负责合并同义备注、点评、给建议，铁律禁止它自行加总或改动数字**。教训：曾让 AI 从原始流水自行求和，导致把"超支"算成"有剩余"——LLM 不可靠于多项求和，务必代码算数、AI 只写字
 - **自定义资金周期**（取代自然月）：手动「开启新周期」（自己定预算+开始日期）、「结束本周期」；预算/已花/剩余/环形图全按当前周期算；周期中途可「＋加钱」把临时到账（如父母转的奖励）追加进本期预算
 - **记账日期可改**：记一笔时能选日期（默认今天，补记可改、记完保留所选日期方便连续补记）；列表每笔有「改日期」修正旧账
 - **明细按日期分组**：消费明细按天分组，组标题显示日期（带星期）+ 当天小计，去掉每行的具体时分，列表过长可滚动
