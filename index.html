@@ -97,12 +97,20 @@
     /* 让原生日期选择控件在深色背景下也清晰 */
     input[type="date"] { color-scheme: dark; font-family: "JetBrains Mono", monospace; }
 
+    /* 标签栏（分页切换） */
+    .tabbar { display: flex; gap: 6px; padding: 5px; margin-bottom: 18px;
+      background: rgba(20, 24, 31, 0.85); border: 1px solid var(--border); border-radius: 14px;
+      position: sticky; top: 10px; z-index: 20; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+    .tab { flex: 1; padding: 10px 4px; font-size: 14px; font-weight: 600; color: var(--muted);
+      background: transparent; border-radius: 10px; transition: color .15s, background .15s; }
+    .tab:hover:not(.active) { color: var(--text); }
+    .tab.active { background: var(--neon); color: var(--neon-ink); }
+    .tab-panel[hidden] { display: none; }
+
     /* 数据图表 */
-    .chart-block { margin-top: 22px; }
-    .chart-block:first-child { margin-top: 8px; }
-    .chart-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
     .pace-text { font-size: 13px; color: var(--muted); margin-top: 6px; text-align: center; line-height: 1.6; }
     .pace-text b { color: var(--text); font-weight: 700; }
+    .more-hint { font-size: 13px; color: var(--muted); margin: 6px 0 14px; line-height: 1.6; }
     /* ApexCharts 在深色卡片上的微调 */
     .apexcharts-tooltip { font-family: "JetBrains Mono", monospace !important; }
     .apexcharts-legend-text { color: var(--muted) !important; }
@@ -200,108 +208,124 @@
       <button class="logout" id="logoutBtn">退出登录</button>
     </div>
 
-    <!-- 本周期预算 -->
-    <section class="card" style="--i:1">
-      <div class="card-head">
-        <span class="label" style="margin:0">💰 本周期</span>
-        <div class="cycle-actions">
-          <button id="addBudgetBtn" class="cycle-btn ghost" style="display:none">＋ 加钱</button>
-          <button id="endCycleBtn" class="cycle-btn ghost" style="display:none">结束本周期</button>
-          <button id="newCycleBtn" class="cycle-btn">＋ 开启新周期</button>
-        </div>
-      </div>
-      <div id="budgetBody"></div>
-      <!-- 开启新周期的表单：点「开启新周期」才展开 -->
-      <div id="newCycleForm" class="new-cycle-form" style="display:none">
-        <div class="ncf-row">
-          <div class="field">
-            <label>本期预算（元）</label>
-            <input type="number" id="cycleBudgetInput" placeholder="例如 1500" step="1" min="0">
-          </div>
-          <div class="field">
-            <label>开始日期</label>
-            <input type="date" id="cycleStartInput">
+    <!-- 标签栏：分页切换，每屏只看一块 -->
+    <nav class="tabbar">
+      <button class="tab active" data-tab="overview">总览</button>
+      <button class="tab" data-tab="record">记账</button>
+      <button class="tab" data-tab="stats">统计</button>
+      <button class="tab" data-tab="more">更多</button>
+    </nav>
+
+    <!-- ===== 总览：本周期预算 + 花钱节奏 ===== -->
+    <div class="tab-panel" data-panel="overview">
+      <!-- 本周期预算 -->
+      <section class="card" style="--i:1">
+        <div class="card-head">
+          <span class="label" style="margin:0">💰 本周期</span>
+          <div class="cycle-actions">
+            <button id="addBudgetBtn" class="cycle-btn ghost" style="display:none">＋ 加钱</button>
+            <button id="endCycleBtn" class="cycle-btn ghost" style="display:none">结束本周期</button>
+            <button id="newCycleBtn" class="cycle-btn">＋ 开启新周期</button>
           </div>
         </div>
-        <button class="btn-primary" id="confirmNewCycleBtn">确认开启新周期</button>
-        <div class="hint" id="cycleHint">开启新周期会自动结束上一个；开始日期可往前选，把已经花的也圈进来。</div>
-      </div>
-    </section>
+        <div id="budgetBody"></div>
+        <!-- 开启新周期的表单：点「开启新周期」才展开 -->
+        <div id="newCycleForm" class="new-cycle-form" style="display:none">
+          <div class="ncf-row">
+            <div class="field">
+              <label>本期预算（元）</label>
+              <input type="number" id="cycleBudgetInput" placeholder="例如 1500" step="1" min="0">
+            </div>
+            <div class="field">
+              <label>开始日期</label>
+              <input type="date" id="cycleStartInput">
+            </div>
+          </div>
+          <button class="btn-primary" id="confirmNewCycleBtn">确认开启新周期</button>
+          <div class="hint" id="cycleHint">开启新周期会自动结束上一个；开始日期可往前选，把已经花的也圈进来。</div>
+        </div>
+      </section>
 
-    <!-- 数据图表（ApexCharts 画） -->
-    <section class="card" style="--i:2">
-      <span class="label">📊 数据图表</span>
-      <div id="chartsBody">
-        <div class="chart-block">
-          <div class="chart-title">花钱节奏</div>
-          <div id="chartPace"></div>
-          <div class="pace-text" id="paceText"></div>
-        </div>
-        <div class="chart-block">
-          <div class="chart-title">本周期消费构成</div>
-          <div id="chartCat"></div>
-        </div>
-        <div class="chart-block">
-          <div class="chart-title">每日消费</div>
-          <div id="chartDaily"></div>
-        </div>
-        <div class="chart-block">
-          <div class="chart-title">周期对比（花费 vs 预算）</div>
-          <div id="chartCompare"></div>
-        </div>
-      </div>
-      <div id="chartsEmpty" class="budget-empty" style="display:none">开启资金周期后，这里会显示各种图表 📈</div>
-    </section>
+      <!-- 花钱节奏 -->
+      <section class="card" style="--i:2">
+        <span class="label">⚡ 花钱节奏</span>
+        <div id="chartPace"></div>
+        <div class="pace-text" id="paceText"></div>
+      </section>
+    </div>
 
-    <!-- 累计总额 -->
-    <section class="card" style="--i:2">
-      <span class="label">累计总支出</span>
-      <div class="total" id="total">总共花了 0.00 元 <small>（0 笔）</small></div>
-      <div class="by-cat" id="byCat"></div>
-    </section>
+    <!-- ===== 记账：记一笔 + 消费明细 ===== -->
+    <div class="tab-panel" data-panel="record" hidden>
+      <!-- 记一笔 -->
+      <section class="card" style="--i:1">
+        <span class="label">记一笔</span>
+        <div class="ai-row">
+          <input type="text" id="aiInput" placeholder="✨ 用一句话记账，如：今天星巴克 38">
+          <button id="aiBtn">AI 识别</button>
+        </div>
+        <div class="hint" id="aiHint"></div>
+        <div class="ai-divider">— 或手动填写 —</div>
+        <div class="fields">
+          <div class="field">
+            <label>金额（元）</label>
+            <input type="number" id="amount" placeholder="例如 35.5" step="0.01" min="0">
+          </div>
+          <div class="field">
+            <label>分类</label>
+            <input type="text" id="category" placeholder="餐饮 / 交通 / 购物…">
+          </div>
+          <div class="field">
+            <label>备注（可不填）</label>
+            <input type="text" id="note" placeholder="例如 午饭">
+          </div>
+          <div class="field">
+            <label>日期（补记可改，默认今天）</label>
+            <input type="date" id="recordDate">
+          </div>
+        </div>
+        <button class="btn-primary" id="addBtn">＋ 记一笔</button>
+        <div class="hint" id="hint"></div>
+      </section>
 
-    <!-- 记一笔 -->
-    <section class="card" style="--i:3">
-      <span class="label">记一笔</span>
-      <div class="ai-row">
-        <input type="text" id="aiInput" placeholder="✨ 用一句话记账，如：今天星巴克 38">
-        <button id="aiBtn">AI 识别</button>
-      </div>
-      <div class="hint" id="aiHint"></div>
-      <div class="ai-divider">— 或手动填写 —</div>
-      <div class="fields">
-        <div class="field">
-          <label>金额（元）</label>
-          <input type="number" id="amount" placeholder="例如 35.5" step="0.01" min="0">
-        </div>
-        <div class="field">
-          <label>分类</label>
-          <input type="text" id="category" placeholder="餐饮 / 交通 / 购物…">
-        </div>
-        <div class="field">
-          <label>备注（可不填）</label>
-          <input type="text" id="note" placeholder="例如 午饭">
-        </div>
-        <div class="field">
-          <label>日期（补记可改，默认今天）</label>
-          <input type="date" id="recordDate">
-        </div>
-      </div>
-      <button class="btn-primary" id="addBtn">＋ 记一笔</button>
-      <div class="hint" id="hint"></div>
-    </section>
+      <!-- 消费明细 -->
+      <section class="card" style="--i:2">
+        <span class="label">消费明细</span>
+        <div id="list"></div>
+      </section>
+    </div>
 
-    <!-- 列表 -->
-    <section class="card" style="--i:4">
-      <span class="label">消费明细</span>
-      <div id="list"></div>
-    </section>
+    <!-- ===== 统计：构成 / 每日 / 周期对比 / 累计 ===== -->
+    <div class="tab-panel" data-panel="stats" hidden>
+      <section class="card" style="--i:1">
+        <span class="label">本周期消费构成</span>
+        <div id="chartCat"></div>
+      </section>
+      <section class="card" style="--i:2">
+        <span class="label">每日消费</span>
+        <div id="chartDaily"></div>
+      </section>
+      <section class="card" style="--i:3">
+        <span class="label">周期对比（花费 vs 预算）</span>
+        <div id="chartCompare"></div>
+      </section>
+      <section class="card" style="--i:4">
+        <span class="label">累计总支出</span>
+        <div class="total" id="total">总共花了 0.00 元 <small>（0 笔）</small></div>
+        <div class="by-cat" id="byCat"></div>
+      </section>
+    </div>
 
-    <!-- 备份工具 -->
-    <div class="tools">
-      <button id="exportBtn">⬇ 导出备份</button>
-      <button id="importBtn">⬆ 导入备份</button>
-      <input type="file" id="importFile" accept="application/json,.json" hidden>
+    <!-- ===== 更多：备份 ===== -->
+    <div class="tab-panel" data-panel="more" hidden>
+      <section class="card" style="--i:1">
+        <span class="label">备份</span>
+        <p class="more-hint">把账本导出成文件存好，换设备或清空浏览器也不怕丢。</p>
+        <div class="tools">
+          <button id="exportBtn">⬇ 导出备份</button>
+          <button id="importBtn">⬆ 导入备份</button>
+          <input type="file" id="importFile" accept="application/json,.json" hidden>
+        </div>
+      </section>
     </div>
   </div>
 
@@ -329,6 +353,7 @@
     let budget = null;        // 上次用过的预算（来自 settings，做新周期的默认建议值）
     let cycles = [];          // 所有资金周期（每个有 start_date / end_date / budget）
     let currentUser = null;
+    let activeTab = "overview"; // 当前在看哪个标签页
 
     // 当前时间字符串（用 logic.js 的共用函数）
     function now() { return formatDateTime(new Date()); }
@@ -607,6 +632,15 @@
       if (error) { cur.end_date = null; render(); alert("结束周期失败：" + error.message); }
     }
 
+    // ===== 标签页切换 =====
+    function switchTab(tab) {
+      activeTab = tab;
+      document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+      document.querySelectorAll(".tab-panel").forEach((p) => { p.hidden = (p.dataset.panel !== tab); });
+      render();   // 重画整页（含本标签里的图——此时它可见，宽度才正确）
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
     // ===== 画界面 =====
     // 把 "2026-06-01" 显示成 "6月1日"
     function prettyDate(s) {
@@ -699,26 +733,28 @@
 
     function renderCharts() {
       const cur = currentCycle();
-      const body = document.getElementById("chartsBody");
-      const empty = document.getElementById("chartsEmpty");
+      const onOverview = activeTab === "overview";   // 节奏图在「总览」
+      const onStats = activeTab === "stats";          // 其余三张图在「统计」
+      const PH = '<div class="budget-empty">开启资金周期后显示 📈</div>';
 
-      // 没有进行中的周期：藏起图表区，给个提示
+      // 没有进行中的周期：清掉图、在当前可见标签里放占位提示
       if (!cur) {
-        body.style.display = "none";
-        empty.style.display = "";
         ["pace", "cat", "daily", "compare"].forEach(killChart);
+        document.getElementById("paceText").innerHTML = "";
+        if (onOverview) document.getElementById("chartPace").innerHTML = PH;
+        if (onStats) ["chartCat", "chartDaily", "chartCompare"].forEach((id) => { document.getElementById(id).innerHTML = PH; });
         return;
       }
-      body.style.display = "";
-      empty.style.display = "none";
 
+      // 图表必须在「可见」时才画，否则宽度会算成 0 而变形 —— 所以只画当前标签里的图。
       const end = cur.end_date || today();
       const cycleRecords = records.filter((r) => inCycle(r, cur));
       const spent = sumByCycle(records, cur);
       const { pct, remain, state } = budgetStatus(spent, cur.budget);
       const stateColor = state === "over" ? "#ff5d73" : state === "warn" ? "#ffc24b" : "#b6ff3a";
 
-      // ① 花钱节奏（仪表盘 + 一句话）
+      // ① 花钱节奏（仪表盘 + 一句话）—— 总览标签
+      if (onOverview) {
       const daysElapsed = Math.max(1, daysBetween(cur.start_date, today()) + 1);
       const p = pacing(spent, cur.budget, daysElapsed);
       drawChart("pace", "chartPace", {
@@ -747,6 +783,10 @@
         paceMsg = `日均 <b>¥${p.dailyAvg.toFixed(0)}</b>（已 ${daysElapsed} 天）· 照这花法，剩下预算还能撑${dTxt}`;
       }
       document.getElementById("paceText").innerHTML = paceMsg;
+      }
+
+      // ②③④ 只在「统计」标签里画
+      if (!onStats) return;
 
       // ② 本周期消费构成（环形图）
       const cats = sumByCategory(cycleRecords);
@@ -901,6 +941,7 @@
     // ===== 事件绑定 =====
     document.getElementById("googleBtn").addEventListener("click", signInGoogle);
     document.getElementById("logoutBtn").addEventListener("click", signOut);
+    document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => switchTab(b.dataset.tab)));
     document.getElementById("addBtn").addEventListener("click", addRecord);
     document.getElementById("aiBtn").addEventListener("click", aiParse);
     document.getElementById("aiInput").addEventListener("keydown", (e) => { if (e.key === "Enter") aiParse(); });
