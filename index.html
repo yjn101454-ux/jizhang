@@ -877,6 +877,7 @@
     // ===== AI 消费报告 =====
     // 把本周期的各项汇总打包成给后端/AI 用的数据
     function buildReportData(cur) {
+      const end = cur.end_date || today();   // 周期结束日（没结束就到今天）
       const spent = sumByCycle(records, cur);
       const { pct, remain, state } = budgetStatus(spent, cur.budget);
       const daysElapsed = Math.max(1, daysBetween(cur.start_date, today()) + 1);
@@ -886,7 +887,16 @@
       const total = cats.reduce((s, c) => s + c[1], 0) || 1;
       const categories = cats.map((c) => ({ name: c[0], amount: Number(c[1].toFixed(2)), pct: Math.round((c[1] / total) * 100) }));
       const tops = topExpenses(records, cur, 5).map((t) => ({ ...t, amount: Number(t.amount.toFixed(2)) }));
-      // 逐笔明细（重点：带上每笔的备注，让 AI 主要照备注分析）。太多则取最近 100 笔。
+      // 按备注精确合计（次数+金额，代码算准，给 AI 直接引用，别让它自己加）
+      const byNote = sumByNote(records, cur).slice(0, 20)
+        .map((n) => ({ note: n.note, count: n.count, sum: Number(n.sum.toFixed(2)) }));
+      // 花得最多的几天（每天精确合计），支撑「某天花了多少」的说法
+      const topDays = dailyTotals(cycleRecords, cur.start_date, end)
+        .filter((d) => d.amount > 0)
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 5)
+        .map((d) => ({ date: d.date, amount: Number(d.amount.toFixed(2)) }));
+      // 逐笔明细（只为让 AI 理解每笔是什么，不要拿来求和）。太多则取最近 100 笔。
       const items = cycleRecords
         .slice()
         .sort((a, b) => (a.time < b.time ? 1 : -1))   // 新到旧
@@ -904,7 +914,7 @@
         pct: Math.round(pct), daysElapsed, dailyAvg: Number(p.dailyAvg.toFixed(2)),
         daysLeftAtRate: isFinite(p.daysLeftAtRate) ? Math.floor(p.daysLeftAtRate) : null,
         state, categories, topExpenses: tops, prev,
-        items, itemCount: cycleRecords.length,
+        byNote, topDays, items, itemCount: cycleRecords.length,
       };
     }
 

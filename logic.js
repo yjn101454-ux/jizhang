@@ -105,6 +105,21 @@ function dailyTotals(records, startStr, endStr) {
   return out;
 }
 
+// 按「备注」精确合计本周期消费：相同备注的归一组，算出次数和总额。
+// 返回 [{ note, count, sum }]，按总额从高到低。给 AI 报告用——次数和金额都由代码算准，
+// 避免让 AI 自己做加法（模型算数不可靠）。
+function sumByNote(records, cycle) {
+  const map = {};
+  for (const r of records) {
+    if (!inCycle(r, cycle)) continue;
+    const note = (r.note || "").trim() || "（无备注）";
+    if (!map[note]) map[note] = { note, count: 0, sum: 0 };
+    map[note].count += 1;
+    map[note].sum += r.amount;
+  }
+  return Object.values(map).sort((a, b) => b.sum - a.sum);
+}
+
 // 本周期里最大的 n 笔消费（按金额从高到低），用于报告里点名「大头开销」。
 // 返回精简对象数组：[{ amount, category, note, date }]
 function topExpenses(records, cycle, n) {
@@ -149,6 +164,6 @@ if (typeof module !== "undefined" && module.exports) {
     formatDateTime, monthKey, isValidAmount,
     sumByMonth, sumAll, sumByCategory, budgetStatus,
     dateOf, inCycle, openCycle, sumByCycle,
-    addDays, daysBetween, dailyTotals, pacing, topExpenses,
+    addDays, daysBetween, dailyTotals, pacing, topExpenses, sumByNote,
   };
 }

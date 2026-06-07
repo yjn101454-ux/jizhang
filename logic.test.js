@@ -8,7 +8,7 @@ const {
   formatDateTime, monthKey, isValidAmount,
   sumByMonth, sumAll, sumByCategory, budgetStatus,
   dateOf, inCycle, openCycle, sumByCycle,
-  addDays, daysBetween, dailyTotals, pacing, topExpenses,
+  addDays, daysBetween, dailyTotals, pacing, topExpenses, sumByNote,
 } = require("./logic.js");
 
 // 金额是小数，相加可能有微小的浮点误差，所以用「足够接近」来判断
@@ -168,6 +168,23 @@ test("topExpenses：本周期最大的几笔，按金额从高到低", () => {
   assert.strictEqual(top[0].category, "购物"); close(top[0].amount, 100);
   assert.strictEqual(top[1].category, "餐饮"); close(top[1].amount, 35.5);
   assert.strictEqual(top[0].date, "2026-06-03"); // 带日期
+});
+
+test("sumByNote：按备注精确合计次数和金额", () => {
+  const cyc = { start_date: "2026-06-01", end_date: null };
+  const recs = [
+    { amount: 35, category: "娱乐", note: "震天电竞", time: "2026-06-02 23:00" },
+    { amount: 40, category: "其它", note: "震天电竞", time: "2026-06-05 23:00" },
+    { amount: 50, category: "娱乐", note: "震天电竞", time: "2026-06-07 23:00" },
+    { amount: 18, category: "餐饮", note: "蜜雪冰城", time: "2026-06-03 12:00" },
+    { amount: 9.9, category: "餐饮", note: "震天电竞", time: "2026-05-20 12:00" }, // 不在周期内，不算
+  ];
+  const out = sumByNote(recs, cyc);
+  assert.strictEqual(out[0].note, "震天电竞");
+  assert.strictEqual(out[0].count, 3);     // 周期内 3 次（排除 5 月那次）
+  close(out[0].sum, 125);                   // 35+40+50，精确
+  assert.strictEqual(out[1].note, "蜜雪冰城");
+  assert.strictEqual(out[1].count, 1);
 });
 
 test("pacing：日均与「还能撑几天」", () => {
